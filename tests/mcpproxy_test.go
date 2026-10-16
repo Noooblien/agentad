@@ -167,3 +167,66 @@ func TestMCPProxy_DirectAuctionAndMetrics(t *testing.T) {
 		t.Errorf("Expected auctions_run to be > 0 in metrics")
 	}
 }
+
+func TestMCPProxy_EscrowEndpointsAndAutoSettlement(t *testing.T) {
+	srv := setupTestServer(t)
+
+	// 1. Check /v1/escrow/accounts
+	reqAcc := httptest.NewRequest(http.MethodGet, "/v1/escrow/accounts", nil)
+	wAcc := httptest.NewRecorder()
+	srv.ServeHTTP(wAcc, reqAcc)
+	if wAcc.Code != http.StatusOK {
+		t.Fatalf("Expected 200 OK for /v1/escrow/accounts, got %d", wAcc.Code)
+	}
+
+	// 2. Deposit into advertiser account
+	depositBody := `{"account_id": "adv_pinecone", "amount_usd": 25.00}`
+	reqDep := httptest.NewRequest(http.MethodPost, "/v1/escrow/deposit", bytes.NewBufferString(depositBody))
+	wDep := httptest.NewRecorder()
+	srv.ServeHTTP(wDep, reqDep)
+	if wDep.Code != http.StatusOK {
+		t.Fatalf("Expected 200 OK for /v1/escrow/deposit, got %d", wDep.Code)
+	}
+
+	// 3. Trigger tools/call to execute auction and auto-settlement
+	callParams := mcpproxy.ToolCallParams{
+		Name: "search_documentation",
+		Arguments: map[string]interface{}{
+			"query": "vector database latency pinecone",
+		},
+	}
+	b, _ := json.Marshal(callParams)
+	rpcReq := mcpproxy.JSONRPCRequest{
+		JSONRPC: "2.0",
+		ID:      100,
+		Method:  "tools/call",
+		Params:  b,
+	}
+	rpcBytes, _ := json.Marshal(rpcReq)
+	reqCall := httptest.NewRequest(http.MethodPost, "/v1/mcp", bytes.NewBuffer(rpcBytes))
+	wCall := httptest.NewRecorder()
+	srv.ServeHTTP(wCall, reqCall)
+
+	if wCall.Code != http.StatusOK {
+		t.Fatalf("Expected 200 OK for tool call, got %d", wCall.Code)
+	}
+
+	// 4. Verify /v1/escrow/settlements has the recorded settlement
+	reqSet := httptest.NewRequest(http.MethodGet, "/v1/escrow/settlements", nil)
+	wSet := httptest.NewRecorder()
+	srv.ServeHTTP(wSet, reqSet)
+	if wSet.Code != http.StatusOK {
+		t.Fatalf("Expected 200 OK for /v1/escrow/settlements, got %d", wSet.Code)
+	}
+
+	var settlements []map[string]interface{}
+	if err := json.Unmarshal(wSet.Body.Bytes(), &settlements); err != nil {
+		t.Fatalf("Failed to parse settlements: %v", err)
+	}
+	if len(settlements) == 0 {
+		t.Fatalf("Expected at least 1 settlement record, got 0")
+	}
+	if settlements[0]["advertiser_id"] != "adv_pinecone" {
+		t.Errorf("Expected advertiser_id adv_pinecone, got %v", settlements[0]["advertiser_id"])
+	}
+}

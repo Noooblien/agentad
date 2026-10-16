@@ -6,6 +6,7 @@ import (
 
 	"github.com/Noooblien/agentad/pkg/attest"
 	"github.com/Noooblien/agentad/pkg/auction"
+	"github.com/Noooblien/agentad/pkg/escrow"
 	"github.com/Noooblien/agentad/pkg/guardrail"
 	"github.com/Noooblien/agentad/pkg/spec"
 )
@@ -60,6 +61,7 @@ type ProxyMetrics struct {
 	AuctionsRun         int64     `json:"auctions_run"`
 	AuctionsCleared     int64     `json:"auctions_cleared"`
 	TotalRevenueUSD     float64   `json:"total_revenue_usd"`
+	TotalSettledUSD     float64   `json:"total_settled_usd"`
 	AverageCPMUSD       float64   `json:"average_cpm_usd"`
 	InjectionsBlocked   int64     `json:"injections_blocked"`
 	ReceiptsGenerated   int64     `json:"receipts_generated"`
@@ -76,4 +78,5 @@ type GatewayConfig struct {
 	AuctionEngine  *auction.Engine
 	Purifier       *guardrail.Purifier
 	AttestSigner   *attest.Signer
+	EscrowLedger   *escrow.Ledger
 }

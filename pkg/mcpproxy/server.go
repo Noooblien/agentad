@@ -13,6 +13,7 @@ import (
 
 	"github.com/Noooblien/agentad/pkg/attest"
 	"github.com/Noooblien/agentad/pkg/auction"
+	"github.com/Noooblien/agentad/pkg/escrow"
 	"github.com/Noooblien/agentad/pkg/guardrail"
 	"github.com/Noooblien/agentad/pkg/spec"
 )
@@ -37,6 +38,18 @@ func NewServer(cfg GatewayConfig) (*Server, error) {
 	}
 	if cfg.AttestSigner == nil {
 		cfg.AttestSigner = attest.NewSigner()
+	}
+	if cfg.EscrowLedger == nil {
+		ledger, err := escrow.NewLedger("treasury_aap", escrow.DefaultRevenueSplit())
+		if err == nil {
+			ledger.RegisterAccount("adv_pinecone", "Pinecone Systems", "advertiser", escrow.CurrencyMicroUSD)
+			_ = ledger.Deposit("adv_pinecone", escrow.USDToMicro(500.00))
+			ledger.RegisterAccount("adv_neon", "Neon Postgres", "advertiser", escrow.CurrencyMicroUSD)
+			_ = ledger.Deposit("adv_neon", escrow.USDToMicro(350.00))
+			ledger.RegisterAccount("adv_cloudflare", "Cloudflare", "advertiser", escrow.CurrencyMicroUSD)
+			_ = ledger.Deposit("adv_cloudflare", escrow.USDToMicro(200.00))
+			cfg.EscrowLedger = ledger
+		}
 	}
 	if cfg.PublisherKey == nil {
 		kp, err := attest.GenerateKeyPair()
@@ -112,6 +125,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleDirectAuction(w, r)
 	case r.URL.Path == "/v1/attest" && r.Method == http.MethodPost:
 		s.handleAttest(w, r)
+	case r.URL.Path == "/v1/escrow/settlements" && r.Method == http.MethodGet:
+		s.handleEscrowSettlements(w, r)
+	case r.URL.Path == "/v1/escrow/accounts" && r.Method == http.MethodGet:
+		s.handleEscrowAccounts(w, r)
+	case r.URL.Path == "/v1/escrow/deposit" && r.Method == http.MethodPost:
+		s.handleEscrowDeposit(w, r)
 	case (r.URL.Path == "/v1/mcp" || r.URL.Path == "/") && r.Method == http.MethodPost:
 		s.handleMCP(w, r)
 	default:
@@ -188,6 +207,62 @@ func (s *Server) handleAttest(w http.ResponseWriter, r *http.Request) {
 	res := s.cfg.AttestSigner.VerifyReceipt(&receipt, 15*time.Minute)
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(res)
+}
+
+func (s *Server) handleEscrowAccounts(w http.ResponseWriter, r *http.Request) {
+	if s.cfg.EscrowLedger == nil {
+		http.Error(w, "escrow ledger not configured", http.StatusServiceUnavailable)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	advPinecone, _ := s.cfg.EscrowLedger.GetAccount("adv_pinecone")
+	advNeon, _ := s.cfg.EscrowLedger.GetAccount("adv_neon")
+	advCloudflare, _ := s.cfg.EscrowLedger.GetAccount("adv_cloudflare")
+	pubAcc, _ := s.cfg.EscrowLedger.GetAccount(s.cfg.PublisherDomain)
+	treasury, _ := s.cfg.EscrowLedger.GetAccount("treasury_aap")
+
+	accounts := map[string]interface{}{
+		"advertisers": []*escrow.Account{advPinecone, advNeon, advCloudflare},
+		"publisher":   pubAcc,
+		"treasury":    treasury,
+	}
+	_ = json.NewEncoder(w).Encode(accounts)
+}
+
+func (s *Server) handleEscrowSettlements(w http.ResponseWriter, r *http.Request) {
+	if s.cfg.EscrowLedger == nil {
+		http.Error(w, "escrow ledger not configured", http.StatusServiceUnavailable)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(s.cfg.EscrowLedger.GetSettlements())
+}
+
+func (s *Server) handleEscrowDeposit(w http.ResponseWriter, r *http.Request) {
+	if s.cfg.EscrowLedger == nil {
+		http.Error(w, "escrow ledger not configured", http.StatusServiceUnavailable)
+		return
+	}
+	var body struct {
+		AccountID string  `json:"account_id"`
+		AmountUSD float64 `json:"amount_usd"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, fmt.Sprintf("invalid request: %v", err), http.StatusBadRequest)
+		return
+	}
+	micros := escrow.USDToMicro(body.AmountUSD)
+	if err := s.cfg.EscrowLedger.Deposit(body.AccountID, micros); err != nil {
+		http.Error(w, fmt.Sprintf("deposit failed: %v", err), http.StatusBadRequest)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":        "deposited",
+		"account_id":    body.AccountID,
+		"amount_usd":    body.AmountUSD,
+		"amount_micros": micros,
+	})
 }
 
 // handleMCP intercepts JSON-RPC 2.0 requests.
@@ -350,6 +425,29 @@ func (s *Server) handleToolsCall(w http.ResponseWriter, rpcReq *JSONRPCRequest) 
 				s.metrics.AuctionsCleared++
 				s.metrics.TotalRevenueUSD += aucRes.DebitAmountUSD
 				s.mu.Unlock()
+
+				// Automated Escrow Settlement
+				if s.cfg.EscrowLedger != nil {
+					microAmount := escrow.USDToMicro(aucRes.DebitAmountUSD)
+					if microAmount > 0 {
+						res, resErr := s.cfg.EscrowLedger.ReserveFunds(
+							aucRes.AuctionID,
+							camp.AdvertiserID,
+							s.cfg.PublisherDomain,
+							"mcp_gateway",
+							microAmount,
+							15*time.Minute,
+						)
+						if resErr == nil && res != nil {
+							setRec, setErr := s.cfg.EscrowLedger.SettleAttestation(receipt, res.ReservationID, s.cfg.AttestSigner)
+							if setErr == nil && setRec != nil {
+								s.mu.Lock()
+								s.metrics.TotalSettledUSD += aucRes.DebitAmountUSD
+								s.mu.Unlock()
+							}
+						}
+					}
+				}
 			}
 		}
 	}

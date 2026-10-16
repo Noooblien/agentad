@@ -5,7 +5,7 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/Noooblien/agentad.svg)](https://pkg.go.dev/github.com/Noooblien/agentad)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Go Report Card](https://goreportcard.com/badge/github.com/Noooblien/agentad)](https://goreportcard.com/report/github.com/Noooblien/agentad)
-[![Tests](https://img.shields.io/badge/tests-17%2F17%20passing-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-22%2F22%20passing-brightgreen.svg)]()
 [![Model Context Protocol](https://img.shields.io/badge/MCP-Compatible-purple.svg)](https://modelcontextprotocol.io)
 
 **The Zero-Jailbreak, Machine-to-Machine Sponsored Discovery & Monetization Protocol for AI Agents.**
@@ -63,6 +63,7 @@ sequenceDiagram
 * **🛡️ Zero-Jailbreak Guardrail & AST Purifier:** Rejects all imperative prompt injection patterns (`system:`, `ignore previous instructions`, `[INST]`, `<|im_start|>`, `rm -rf`). Disallows unstructured natural language strings; enforces strict typed primitives (numbers, dates, enum tags).
 * **⚡ Sub-50ms RTB Auction Engine:** Modified second-price quality-weighted auction ($\text{Score} = \text{BidCPM} \times \text{Relevance} \times \text{TrustScore}$).
 * **🔒 Cryptographic Proof-of-Impression (PoI):** Ed25519 digital signatures linking reasoning context digest, auction ID, campaign ID, clearing price, and replay-proof nonces.
+* **💰 Micro-Settlement Escrow & L402 Clearing:** Multi-party programmatic revenue distribution (70% Publisher, 20% Agent Host, 10% Protocol Treasury) with hash-chained cryptographic audit receipts and HTTP 402 Lightning token support.
 * **🔌 Native Model Context Protocol (MCP) Reverse Proxy:** Transparently wraps any existing upstream MCP server or runs standalone to annotate tools and monetize agent tool-calls.
 * **🌐 Web Standard Specification:** Full support for `/.well-known/agent-ads.json`.
 
@@ -81,7 +82,7 @@ go build -o bin/agentad ./cmd/agentad
 ### 2. Start the Gateway
 
 ```bash
-# Starts MCP gateway on port 8090 with demo campaigns
+# Starts MCP gateway on port 8090 with demo campaigns & auto-escrow
 ./bin/agentad serve --port 8090 --domain vectorbenchmark.io
 ```
 
@@ -90,12 +91,22 @@ Endpoints exposed:
 * `POST /v1/mcp`                    - MCP JSON-RPC 2.0 tool-call interceptor
 * `POST /v1/auction`                - Direct RTB auction clearing API
 * `POST /v1/attest`                 - Cryptographic PoI receipt verification
+* `GET  /v1/escrow/accounts`        - Escrow ledger balance inspection
+* `GET  /v1/escrow/settlements`     - Immutable cryptographic settlement logs
+* `POST /v1/escrow/deposit`         - Advertiser deposit endpoint
 * `GET  /metrics`                   - Real-time revenue & injection blocking metrics
 
-### 3. Run a Terminal RTB Auction
+### 3. Run a Terminal RTB Auction & Live Escrow Settlement
 
 ```bash
+# Run real-time bidding auction
 ./bin/agentad auction -intent "find the fastest serverless vector database for rag"
+
+# Simulate end-to-end multi-party escrow clearing (70/20/10 split)
+./bin/agentad escrow -action simulate
+
+# Generate L402 HTTP 402 payment challenge & preimage proof
+./bin/agentad escrow -action l402
 ```
 
 ### 4. Test the Anti-Jailbreak Purifier
