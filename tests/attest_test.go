@@ -100,3 +100,30 @@ func TestAttest_ReplayAttackRejection(t *testing.T) {
 		t.Errorf("Expected duplicate nonce to trigger replay attack violation")
 	}
 }
+
+func TestAttest_EIP712DomainAndTypedReceiptHashing(t *testing.T) {
+	domain := attest.EIP712Domain{
+		Name:              "AgentAd Protocol",
+		Version:           "1.0.0",
+		ChainID:           1, // Ethereum Mainnet
+		VerifyingContract: "0x1234567890123456789012345678901234567890",
+	}
+
+	separator := attest.ComputeEIP712DomainSeparator(domain)
+	if len(separator) != 64 {
+		t.Fatalf("expected 64-char hex domain separator, got %s", separator)
+	}
+
+	receipt := &attest.AttestationReceipt{
+		ReceiptID:        "rec_123",
+		AuctionID:        "auc_456",
+		CampaignID:       "cmp_789",
+		ClearingPriceCPM: 2.50,
+		Nonce:            "nonce_abc",
+	}
+
+	digest := attest.HashTypedReceipt(separator, receipt)
+	if len(digest) != 64 {
+		t.Fatalf("expected 64-char hex digest, got %s", digest)
+	}
+}
