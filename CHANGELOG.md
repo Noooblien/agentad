@@ -10,6 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Multi-Touch Conversion Attribution & Proof-of-Conversion Engine (`pkg/tracker`)**: Comprehensive attribution engine for autonomous AI-to-AI commerce with mathematical credit distribution across 5 models (`first_touch`, `last_touch`, `linear`, `time_decay`, `position_based`).
+- **Cryptographic Proof-of-Conversion (PoC)**: Ed25519 digital signatures linking conversion ID, session context, touchpoints, conversion value, and nonces for tamper-proof merchant attestation.
+- **Attribution Governance & Windowing**: Configurable lookback conversion window (default 24h), cryptographic replay attack rejection, and idempotent conversion registration.
+- **Automated Multi-Party Bounty Settlement**: CPA/CPS reward splits (70% publisher, 20% host, 10% protocol) distributed proportionally based on attribution credits.
+- **CLI Subcommand & Reporting (`agentad track`)**: Interactive terminal scorecard (`RenderTrackerScorecard`), Mermaid sequence diagrams (`RenderMermaid`), and Markdown summary tables (`--demo`, `--model`, `--mermaid`, `--format`).
 - **Click Fraud, Synthetic Traffic Scrubbing & Prompt Leakage Defense Engine (`pkg/fraud`)**: Real-time traffic scoring and telemetry sanitization pipeline protecting advertisers and publishers against automated agent fraud and sensitive context leakage.
 - **Shannon Entropy Anomaly Scoring ($H(X)$)**: Statistical entropy calculation detecting low-entropy synthetic bot traffic, query flooding, and repetitive automated scraping.
 - **Multi-Vector Threat Classification**: Real-time identification of 6 attack vectors: `SYNTHETIC_QUERY_FLOODING`, `KEYWORD_STACKING`, `PROMPT_LEAKAGE_PROBE`, `SYBIL_AGENT_RECYCLING`, `UNNATURAL_BURST_PACING`, and `CANARY_TOKEN_EXFILTRATION`.
