@@ -18,6 +18,7 @@ import (
 	"github.com/Noooblien/agentad/pkg/matcher"
 	"github.com/Noooblien/agentad/pkg/mcpproxy"
 	"github.com/Noooblien/agentad/pkg/pacing"
+	"github.com/Noooblien/agentad/pkg/pricing"
 	"github.com/Noooblien/agentad/pkg/spec"
 	"github.com/Noooblien/agentad/pkg/tracker"
 )
@@ -500,6 +501,52 @@ func main() {
 			return
 		}
 
+	case "floor", "pricing":
+		pricingCmd := flag.NewFlagSet("pricing", flag.ExitOnError)
+		demo := pricingCmd.Bool("demo", false, "Run dynamic floor price and bid shading demonstration")
+		shading := pricingCmd.Bool("shading", true, "Enable buyer-side bid shading (eliminating winner's curse)")
+		mermaid := pricingCmd.Bool("mermaid", false, "Output Mermaid flowchart markup of the auction reserve clearance")
+		format := pricingCmd.String("format", "text", "Output format: text | markdown | json")
+		strict := pricingCmd.Bool("strict", false, "Exit with code 1 if any scenario fails to clear or drops below baseline")
+		_ = pricingCmd.Parse(os.Args[2:])
+
+		scenarios := pricing.GetDemoScenarios()
+		if *demo || len(os.Args) == 2 {
+			pe := pricing.NewPricingEvaluator(nil, nil)
+			var allResults []*pricing.AuctionEvaluationResult
+			for _, sc := range scenarios {
+				pe.FloorOpt.SetPublisherMetrics(sc.PublisherID, sc.Category, sc.FillRate, sc.AvgClearing)
+				res := pe.EvaluateAuction(sc.PublisherID, sc.Category, sc.Candidates, *shading)
+				allResults = append(allResults, res)
+
+				if *format == "text" {
+					fmt.Print(pricing.RenderPricingScorecard(res))
+					if *mermaid {
+						fmt.Println(pricing.GenerateMermaidChart(res))
+					}
+				}
+			}
+
+			switch *format {
+			case "text":
+				fmt.Print(pricing.RenderSimulationSummary(allResults))
+			case "markdown":
+				fmt.Println(pricing.GenerateMarkdownReport(allResults))
+			case "json":
+				bytes, _ := json.MarshalIndent(allResults, "", "  ")
+				fmt.Println(string(bytes))
+			}
+
+			if *strict {
+				for _, r := range allResults {
+					if !r.Cleared && r.StaticWouldHaveCleared {
+						os.Exit(1)
+					}
+				}
+			}
+			return
+		}
+
 	default:
 		printHelp()
 	}
@@ -511,6 +558,7 @@ func printHelp() {
 	fmt.Println("  agentad <command> [arguments]")
 	fmt.Println("\nCommands:")
 	fmt.Println("  serve       Start the transparent MCP gateway & AAP HTTP protocol server")
+	fmt.Println("  floor       Dynamic publisher floor price optimizer & buyer-side bid shading engine")
 	fmt.Println("  track       Multi-touch conversion attribution & cryptographic Proof-of-Conversion (PoC)")
 	fmt.Println("  bench       Run empirical benchmarks for prompt injection defenses and SLA budgets")
 	fmt.Println("  pacing      Dynamic PID budget pacing controller & spend velocity guardrails")
@@ -522,6 +570,9 @@ func printHelp() {
 	fmt.Println("  escrow      Manage micro-settlements, L402 payment hashes, and revenue distribution")
 	fmt.Println("  spec        Generate and inspect /.well-known/agent-ads.json specifications")
 	fmt.Println("\nExamples:")
+	fmt.Println("  agentad floor --demo --format text")
+	fmt.Println("  agentad floor --demo --shading=true --mermaid")
+	fmt.Println("  agentad floor --demo --format markdown")
 	fmt.Println("  agentad track --demo --format text")
 	fmt.Println("  agentad track --demo --model time_decay --mermaid")
 	fmt.Println("  agentad bench --suite all --format text")

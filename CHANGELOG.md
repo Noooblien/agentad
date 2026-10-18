@@ -10,6 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Dynamic Publisher Floor Price Optimizer & Buyer Bid Shading Engine (`pkg/pricing`)**: Real-time publisher yield management calculating dynamic reserve prices based on historical inventory fill rates, category competition density, and agent reputation scores (`agentad floor`).
+- **Inventory Fill Rate Adaptation**: Closed-loop feedback mechanism dynamically stiffening reserve floors during high-demand surges and softening floors during low-fill periods to eliminate unsold inventory drops.
+- **Buyer-Side Bid Shading & Winner's Curse Protection**: Multi-algorithmic bid shading (`vickrey_emulator`, `winrate_optimizer`, `floor_aware_hybrid`) shaving bids to preserve buyer surplus while enforcing dynamic reserve safety margins.
+- **Multi-Vector Candidate Gatekeeping**: Quality-weighted candidate ranking with explicit rejection categorization (`BELOW_DYNAMIC_FLOOR`, `LOW_RELEVANCE`, `LOW_TRUST_REPUTATION`).
+- **Terminal Scorecard & Mermaid Visualization**: Comprehensive ANSI terminal scorecards (`RenderPricingScorecard`), aggregate simulation benchmarks (`RenderSimulationSummary`), Mermaid reserve clearance flowcharts, and Markdown export (`--demo`, `--shading`, `--mermaid`, `--format`).
 - **Multi-Touch Conversion Attribution & Proof-of-Conversion Engine (`pkg/tracker`)**: Comprehensive attribution engine for autonomous AI-to-AI commerce with mathematical credit distribution across 5 models (`first_touch`, `last_touch`, `linear`, `time_decay`, `position_based`).
 - **Cryptographic Proof-of-Conversion (PoC)**: Ed25519 digital signatures linking conversion ID, session context, touchpoints, conversion value, and nonces for tamper-proof merchant attestation.
 - **Attribution Governance & Windowing**: Configurable lookback conversion window (default 24h), cryptographic replay attack rejection, and idempotent conversion registration.
