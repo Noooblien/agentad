@@ -17,6 +17,7 @@ import (
 	"github.com/Noooblien/agentad/pkg/guardrail"
 	"github.com/Noooblien/agentad/pkg/matcher"
 	"github.com/Noooblien/agentad/pkg/mcpproxy"
+	"github.com/Noooblien/agentad/pkg/pacing"
 	"github.com/Noooblien/agentad/pkg/spec"
 )
 
@@ -420,6 +421,35 @@ func main() {
 			os.Exit(1)
 		}
 
+	case "pacing":
+		pacingCmd := flag.NewFlagSet("pacing", flag.ExitOnError)
+		demo := pacingCmd.Bool("demo", false, "Run comprehensive 24-hour RTB budget pacing simulation")
+		strict := pacingCmd.Bool("strict", false, "Exit with code 1 if pacing simulation fails")
+		format := pacingCmd.String("format", "text", "Output format: text | markdown | json")
+		_ = pacingCmd.Parse(os.Args[2:])
+
+		if *demo || len(os.Args) == 2 {
+			results := pacing.RunSimulation()
+			switch *format {
+			case "markdown":
+				fmt.Println(pacing.RenderMarkdown(results))
+			case "json":
+				js, _ := pacing.RenderJSON(results)
+				fmt.Println(js)
+			default:
+				fmt.Print(pacing.RenderSuiteScorecard(results))
+			}
+
+			if *strict {
+				for _, r := range results {
+					if !r.Passed {
+						os.Exit(1)
+					}
+				}
+			}
+			return
+		}
+
 	default:
 		printHelp()
 	}
@@ -432,6 +462,7 @@ func printHelp() {
 	fmt.Println("\nCommands:")
 	fmt.Println("  serve       Start the transparent MCP gateway & AAP HTTP protocol server")
 	fmt.Println("  bench       Run empirical benchmarks for prompt injection defenses and SLA budgets")
+	fmt.Println("  pacing      Dynamic PID budget pacing controller & spend velocity guardrails")
 	fmt.Println("  match       Match agent query intent against advertiser inventory with cosine embeddings")
 	fmt.Println("  fraud       Detect click fraud, synthetic traffic loops, and prompt leakage probes")
 	fmt.Println("  auction     Execute a sub-50ms Real-Time Bidding (RTB) quality-weighted auction")
