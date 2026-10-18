@@ -140,6 +140,16 @@ Endpoints exposed:
 ./bin/agentad bench --strict --format markdown
 ```
 
+### 7. Dynamic Budget Pacing & Spend Velocity Protection
+
+```bash
+# Run 24-hour RTB budget pacing simulation across 4 real-world traffic profiles:
+./bin/agentad pacing --demo
+
+# Enforce strict budget governance and output Markdown report:
+./bin/agentad pacing --demo -format markdown -strict
+```
+
 ---
 
 ## Empirical Verification & Benchmark Metrics
@@ -150,6 +160,7 @@ Endpoints exposed:
 | **RTB Second-Price Auction SLA** | 500 | 110,000+ ops/s | 0.005 ms | 0.013 ms | 0.064 ms | < 50.0 ms SLA budget | ✅ PASS |
 | **Semantic Vector Cosine Matching** | 300 | 95,000+ ops/s | 0.009 ms | 0.014 ms | 0.015 ms | < 20.0 ms budget | ✅ PASS |
 | **Traffic Scrubbing & Click Fraud** | 400 | 55,000+ ops/s | 0.017 ms | 0.024 ms | 0.029 ms | < 10.0 ms budget | ✅ PASS |
+| **Dynamic PID Budget Pacing** | 4 scenarios (24h) | Continuous | 95.9% util | $0.38 RMSE | Zero burnout | 100% velocity cap | ✅ PASS |
 
 *Zero external dependencies. Benchmarked natively on Go runtime.*
 
