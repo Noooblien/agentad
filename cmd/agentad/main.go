@@ -19,6 +19,7 @@ import (
 	"github.com/Noooblien/agentad/pkg/mcpproxy"
 	"github.com/Noooblien/agentad/pkg/pacing"
 	"github.com/Noooblien/agentad/pkg/spec"
+	"github.com/Noooblien/agentad/pkg/tracker"
 )
 
 func main() {
@@ -450,6 +451,55 @@ func main() {
 			return
 		}
 
+	case "track":
+		trackCmd := flag.NewFlagSet("track", flag.ExitOnError)
+		demo := trackCmd.Bool("demo", false, "Run comprehensive multi-touch attribution demonstration")
+		model := trackCmd.String("model", "position_based", "Attribution model: first_touch | last_touch | linear | time_decay | position_based")
+		mermaid := trackCmd.Bool("mermaid", false, "Output Mermaid sequence diagram markup of the conversion path")
+		format := trackCmd.String("format", "text", "Output format: text | markdown | json")
+		strict := trackCmd.Bool("strict", false, "Exit with code 1 if any conversion fails attribution")
+		_ = trackCmd.Parse(os.Args[2:])
+
+		scenarios := tracker.GetDemoScenarios()
+		if *demo || len(os.Args) == 2 {
+			var allResults []*tracker.AttributionResult
+			for _, sc := range scenarios {
+				tr := tracker.NewTracker(tracker.DefaultTrackerConfig())
+				for _, touch := range sc.Touches {
+					_ = tr.RecordTouch(touch)
+				}
+				res, err := tr.RecordConversion(sc.Conversion, tracker.AttributionModel(*model))
+				if err != nil {
+					log.Fatalf("Tracking failed: %v", err)
+				}
+				allResults = append(allResults, res)
+
+				if *format == "text" {
+					fmt.Print(tracker.RenderTrackerScorecard(res))
+					if *mermaid {
+						fmt.Println(tracker.RenderMermaid(res))
+					}
+				}
+			}
+
+			switch *format {
+			case "markdown":
+				fmt.Println(tracker.RenderMarkdown(allResults))
+			case "json":
+				bytes, _ := json.MarshalIndent(allResults, "", "  ")
+				fmt.Println(string(bytes))
+			}
+
+			if *strict {
+				for _, r := range allResults {
+					if r.Status != tracker.StatusAttributed {
+						os.Exit(1)
+					}
+				}
+			}
+			return
+		}
+
 	default:
 		printHelp()
 	}
@@ -461,6 +511,7 @@ func printHelp() {
 	fmt.Println("  agentad <command> [arguments]")
 	fmt.Println("\nCommands:")
 	fmt.Println("  serve       Start the transparent MCP gateway & AAP HTTP protocol server")
+	fmt.Println("  track       Multi-touch conversion attribution & cryptographic Proof-of-Conversion (PoC)")
 	fmt.Println("  bench       Run empirical benchmarks for prompt injection defenses and SLA budgets")
 	fmt.Println("  pacing      Dynamic PID budget pacing controller & spend velocity guardrails")
 	fmt.Println("  match       Match agent query intent against advertiser inventory with cosine embeddings")
@@ -471,6 +522,8 @@ func printHelp() {
 	fmt.Println("  escrow      Manage micro-settlements, L402 payment hashes, and revenue distribution")
 	fmt.Println("  spec        Generate and inspect /.well-known/agent-ads.json specifications")
 	fmt.Println("\nExamples:")
+	fmt.Println("  agentad track --demo --format text")
+	fmt.Println("  agentad track --demo --model time_decay --mermaid")
 	fmt.Println("  agentad bench --suite all --format text")
 	fmt.Println("  agentad bench --suite injection --strict")
 	fmt.Println("  agentad serve --port 8090 --domain example.com")
