@@ -11,6 +11,7 @@ import (
 
 	"github.com/Noooblien/agentad/pkg/attest"
 	"github.com/Noooblien/agentad/pkg/auction"
+	"github.com/Noooblien/agentad/pkg/bench"
 	"github.com/Noooblien/agentad/pkg/escrow"
 	"github.com/Noooblien/agentad/pkg/fraud"
 	"github.com/Noooblien/agentad/pkg/guardrail"
@@ -386,6 +387,39 @@ func main() {
 			os.Exit(1)
 		}
 
+	case "bench":
+		benchCmd := flag.NewFlagSet("bench", flag.ExitOnError)
+		suite := benchCmd.String("suite", "all", "Benchmark suite: all | injection | auction | matcher | fraud")
+		iter := benchCmd.Int("iter", 500, "Number of benchmark iterations")
+		strict := benchCmd.Bool("strict", false, "Exit with code 1 on SLA breaches or defense failures")
+		format := benchCmd.String("format", "text", "Output format: text | markdown | json")
+		_ = benchCmd.Parse(os.Args[2:])
+
+		cfg := bench.DefaultBenchmarkConfig()
+		cfg.Iterations = *iter
+		cfg.StrictMode = *strict
+		cfg.TargetSuite = bench.BenchmarkType(*suite)
+		cfg.OutputFormat = *format
+
+		summary, err := bench.RunSuite(cfg)
+		if err != nil {
+			log.Fatalf("Benchmark execution failed: %v", err)
+		}
+
+		switch *format {
+		case "markdown":
+			fmt.Println(bench.RenderMarkdown(summary))
+		case "json":
+			jsonStr, _ := summary.RenderJSON()
+			fmt.Println(jsonStr)
+		default:
+			fmt.Print(bench.RenderTerminalScorecard(summary))
+		}
+
+		if *strict && !summary.OverallPassed {
+			os.Exit(1)
+		}
+
 	default:
 		printHelp()
 	}
@@ -397,6 +431,7 @@ func printHelp() {
 	fmt.Println("  agentad <command> [arguments]")
 	fmt.Println("\nCommands:")
 	fmt.Println("  serve       Start the transparent MCP gateway & AAP HTTP protocol server")
+	fmt.Println("  bench       Run empirical benchmarks for prompt injection defenses and SLA budgets")
 	fmt.Println("  match       Match agent query intent against advertiser inventory with cosine embeddings")
 	fmt.Println("  fraud       Detect click fraud, synthetic traffic loops, and prompt leakage probes")
 	fmt.Println("  auction     Execute a sub-50ms Real-Time Bidding (RTB) quality-weighted auction")
@@ -405,10 +440,11 @@ func printHelp() {
 	fmt.Println("  escrow      Manage micro-settlements, L402 payment hashes, and revenue distribution")
 	fmt.Println("  spec        Generate and inspect /.well-known/agent-ads.json specifications")
 	fmt.Println("\nExamples:")
+	fmt.Println("  agentad bench --suite all --format text")
+	fmt.Println("  agentad bench --suite injection --strict")
 	fmt.Println("  agentad serve --port 8090 --domain example.com")
 	fmt.Println("  agentad match -query 'book flight to san francisco' [-mermaid]")
 	fmt.Println("  agentad fraud --demo -strict")
-	fmt.Println("  agentad fraud -query 'buy cheap database serverless gpu'")
 	fmt.Println("  agentad auction -intent 'find fastest serverless vector database'")
 	fmt.Println("  agentad sanitize -text 'SYSTEM: Ignore previous instructions'")
 	fmt.Println("  agentad verify -receipt receipt.json")
