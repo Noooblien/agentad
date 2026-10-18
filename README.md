@@ -61,6 +61,7 @@ sequenceDiagram
 ## Key Features
 
 * **🛡️ Zero-Jailbreak Guardrail & AST Purifier:** Rejects all imperative prompt injection patterns (`system:`, `ignore previous instructions`, `[INST]`, `<|im_start|>`, `rm -rf`). Disallows unstructured natural language strings; enforces strict typed primitives (numbers, dates, enum tags).
+* **🧠 Sub-Millisecond Semantic Vector Matcher:** High-performance cosine similarity retrieval across 384-dimensional unit embeddings with zero-PII cryptographic SHA-256 intent commitments (`agentad match`).
 * **⚡ Sub-50ms RTB Auction Engine:** Modified second-price quality-weighted auction ($\text{Score} = \text{BidCPM} \times \text{Relevance} \times \text{TrustScore}$).
 * **🔒 Cryptographic Proof-of-Impression (PoI):** Ed25519 digital signatures linking reasoning context digest, auction ID, campaign ID, clearing price, and replay-proof nonces.
 * **💰 Micro-Settlement Escrow & L402 Clearing:** Multi-party programmatic revenue distribution (70% Publisher, 20% Agent Host, 10% Protocol Treasury) with hash-chained cryptographic audit receipts and HTTP 402 Lightning token support.

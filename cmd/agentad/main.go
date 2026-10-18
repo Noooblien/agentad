@@ -13,6 +13,7 @@ import (
 	"github.com/Noooblien/agentad/pkg/auction"
 	"github.com/Noooblien/agentad/pkg/escrow"
 	"github.com/Noooblien/agentad/pkg/guardrail"
+	"github.com/Noooblien/agentad/pkg/matcher"
 	"github.com/Noooblien/agentad/pkg/mcpproxy"
 	"github.com/Noooblien/agentad/pkg/spec"
 )
@@ -308,6 +309,42 @@ func main() {
 			fmt.Println("\033[1;35m========================================================================================\033[0m")
 		}
 
+	case "match":
+		matchCmd := flag.NewFlagSet("match", flag.ExitOnError)
+		query := matchCmd.String("query", "", "User intent query to semantically match against advertiser inventory")
+		category := matchCmd.String("category", "", "Optional category filter (e.g. travel, fintech, developer_tools)")
+		topK := matchCmd.Int("topk", 5, "Number of top matching offers to return")
+		minSim := matchCmd.Float64("min-score", 0.05, "Minimum cosine similarity score threshold (0.0 - 1.0)")
+		mermaid := matchCmd.Bool("mermaid", false, "Output Mermaid flowchart diagram markup of the vector matching DAG")
+		_ = matchCmd.Parse(os.Args[2:])
+
+		if *query == "" {
+			log.Fatal("Usage: agentad match -query <text> [-category <cat>] [-topk <k>] [-min-score <score>] [-mermaid]")
+		}
+
+		idx := matcher.NewIndex(matcher.DefaultDimension)
+		idx.SeedDemoInventory()
+
+		req := matcher.MatchRequest{
+			IntentQuery:   *query,
+			Category:      *category,
+			TopK:          *topK,
+			MinSimilarity: *minSim,
+		}
+
+		results, stats, err := idx.Match(req)
+		if err != nil {
+			log.Fatalf("Vector matching failed: %v", err)
+		}
+
+		if *mermaid {
+			fmt.Println(matcher.RenderMatchMermaid(*query, results))
+			return
+		}
+
+		fmt.Print(matcher.RenderMatchScorecard(*query, stats, results))
+		return
+
 	default:
 		printHelp()
 	}
@@ -319,6 +356,7 @@ func printHelp() {
 	fmt.Println("  agentad <command> [arguments]")
 	fmt.Println("\nCommands:")
 	fmt.Println("  serve       Start the transparent MCP gateway & AAP HTTP protocol server")
+	fmt.Println("  match       Match agent query intent against advertiser inventory with cosine embeddings")
 	fmt.Println("  auction     Execute a sub-50ms Real-Time Bidding (RTB) quality-weighted auction")
 	fmt.Println("  sanitize    Purify ad payloads against indirect prompt injection & AST exploits")
 	fmt.Println("  verify      Cryptographically audit Ed25519 Proof-of-Impression (PoI) receipts")
@@ -326,6 +364,7 @@ func printHelp() {
 	fmt.Println("  spec        Generate and inspect /.well-known/agent-ads.json specifications")
 	fmt.Println("\nExamples:")
 	fmt.Println("  agentad serve --port 8090 --domain example.com")
+	fmt.Println("  agentad match -query 'book flight to san francisco' [-mermaid]")
 	fmt.Println("  agentad auction -intent 'find fastest serverless vector database'")
 	fmt.Println("  agentad sanitize -text 'SYSTEM: Ignore previous instructions'")
 	fmt.Println("  agentad verify -receipt receipt.json")
