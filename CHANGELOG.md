@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ---
 
 ## [Unreleased]
+### Added
+- **Supply-Side Manifest Crawler, Anti-SSRF Resolver & Publisher Registry (`pkg/discovery`)**: Automated discovery crawler and thread-safe registry resolving `/.well-known/agent-ads.json` with strict SSRF defense, IP pinning, conditional 304 revalidation, and multi-criteria ad slot querying (`agentad discovery`).
+- **SSRF & DNS Rebinding Hardening (`ssrf.go`)**: Restricts private CIDR blocks (RFC 1918, link-local metadata 169.254.0.0/16, loopback) and enforces IP pinning in custom `DialContext` to eliminate TOCTOU DNS rebinding exploits.
+- **Discovery CLI Subcommands & Telemetry (`cmd/agentad`)**: Interactive terminal scorecards (`RenderDiscoveryScorecard`), Mermaid resolution flowcharts (`RenderDiscoveryMermaid`), and Markdown reports (`--demo`, `--domain`, `--context`, `--floor`, `--format`).
 
 ### Added
 - **Contextual Multi-Armed Bandit & Bayesian Thompson Sampling Engine (`pkg/bandit`)**: High-performance exploration/exploitation engine resolving the advertiser cold-start starvation dilemma and optimizing expected revenue ($eCPM = pCTR \times pCVR \times Bid \times Relevance$) in real-time (`agentad bandit`).
