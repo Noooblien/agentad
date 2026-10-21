@@ -20,6 +20,7 @@ import (
 	"github.com/Noooblien/agentad/pkg/matcher"
 	"github.com/Noooblien/agentad/pkg/mcpproxy"
 	"github.com/Noooblien/agentad/pkg/pacing"
+	"github.com/Noooblien/agentad/pkg/placement"
 	"github.com/Noooblien/agentad/pkg/pricing"
 	"github.com/Noooblien/agentad/pkg/privacy"
 	"github.com/Noooblien/agentad/pkg/quality"
@@ -844,6 +845,95 @@ func main() {
 		}
 		return
 
+	case "placement":
+		placeCmd := flag.NewFlagSet("placement", flag.ExitOnError)
+		demo := placeCmd.Bool("demo", false, "Run 4-scenario placement, cognitive fatigue & token economics demo")
+		stage := placeCmd.String("stage", "EXPLORATION", "Agent lifecycle stage: EXPLORATION | REASONING | DECISION | EXECUTION")
+		advertiser := placeCmd.String("advertiser", "Pinecone Systems", "Candidate advertiser name")
+		adID := placeCmd.String("ad", "ad_candidate_01", "Candidate ad ID")
+		category := placeCmd.String("category", "vector_database", "Candidate ad category")
+		bid := placeCmd.Float64("bid", 4.50, "Candidate bid CPM in USD")
+		tokens := placeCmd.Int("tokens", 120, "Factsheet token count")
+		contextTokens := placeCmd.Int("context-tokens", 4096, "Total agent context tokens")
+		mermaid := placeCmd.Bool("mermaid", false, "Output Mermaid flowchart markup")
+		format := placeCmd.String("format", "text", "Output format: text | markdown | json")
+		strict := placeCmd.Bool("strict", false, "Exit with code 1 if ad is blocked/suppressed")
+		_ = placeCmd.Parse(os.Args[2:])
+
+		engine := placement.NewEngine(placement.DefaultPlacementConfig())
+
+		if *demo || len(os.Args) == 2 {
+			summary := placement.RunPlacementDemo()
+
+			switch *format {
+			case "markdown":
+				fmt.Println(placement.RenderPlacementMarkdown(summary))
+			case "json":
+				bytes, _ := json.MarshalIndent(summary, "", "  ")
+				fmt.Println(string(bytes))
+			default:
+				fmt.Print(placement.RenderPlacementScorecard(summary))
+				if *mermaid {
+					fmt.Println(placement.RenderPlacementMermaid(summary))
+				}
+			}
+
+			if *strict && summary.SuppressedCount > 0 {
+				os.Exit(1)
+			}
+			return
+		}
+
+		session := &placement.SessionState{
+			SessionID:          "sess_cli_session",
+			CurrentTurn:        1,
+			TotalContextTokens: *contextTokens,
+			RemainingTurnsEst:  3,
+			CurrentStage:       placement.LifecycleStage(strings.ToUpper(*stage)),
+			Impressions:        []placement.ImpressionRecord{},
+		}
+
+		candidate := placement.PlacementCandidate{
+			AdID:            *adID,
+			Advertiser:      *advertiser,
+			Category:        *category,
+			BidCPM:          *bid,
+			FactsheetTokens: *tokens,
+			SupportedSlots:  []placement.SlotArchetype{placement.SlotToolDefinition, placement.SlotToolResponse, placement.SlotSynthesisEnvelope},
+			Factsheet: map[string]interface{}{
+				"service_name": *advertiser,
+				"category":     *category,
+			},
+		}
+
+		eval := engine.Evaluate(session, candidate)
+		summary := &placement.PlacementSummary{
+			SessionID:       session.SessionID,
+			TotalEvaluated:  1,
+			ApprovedCount:   func() int { if eval.Approved { return 1 }; return 0 }(),
+			SuppressedCount: func() int { if !eval.Approved { return 1 }; return 0 }(),
+			AverageFatigue:  eval.CurrentFatigue,
+			Evaluations:     []*placement.PlacementEvaluation{eval},
+		}
+
+		switch *format {
+		case "markdown":
+			fmt.Println(placement.RenderPlacementMarkdown(summary))
+		case "json":
+			bytes, _ := json.MarshalIndent(eval, "", "  ")
+			fmt.Println(string(bytes))
+		default:
+			fmt.Print(placement.RenderPlacementScorecard(summary))
+			if *mermaid {
+				fmt.Println(placement.RenderPlacementMermaid(summary))
+			}
+		}
+
+		if *strict && !eval.Approved {
+			os.Exit(1)
+		}
+		return
+
 	default:
 		printHelp()
 	}
@@ -855,6 +945,7 @@ func printHelp() {
 	fmt.Println("  agentad <command> [arguments]")
 	fmt.Println("\nCommands:")
 	fmt.Println("  serve       Start the transparent MCP gateway & AAP HTTP protocol server")
+	fmt.Println("  placement   Agent slot placement, frequency capping & attention budget arbiter")
 	fmt.Println("  quality     Agent Ad Quality Score (AQS), factsheet grounding & hallucination audit engine")
 	fmt.Println("  safety      Brand safety, competitor negative targeting & semantic alignment governor")
 	fmt.Println("  privacy     Zero-PII scrubbing, semantic K-anonymity & differential privacy engine")
@@ -871,6 +962,9 @@ func printHelp() {
 	fmt.Println("  escrow      Manage micro-settlements, L402 payment hashes, and revenue distribution")
 	fmt.Println("  spec        Generate and inspect /.well-known/agent-ads.json specifications")
 	fmt.Println("\nExamples:")
+	fmt.Println("  agentad placement --demo --format text")
+	fmt.Println("  agentad placement --demo --mermaid")
+	fmt.Println("  agentad placement -stage EXPLORATION -bid 5.00 -tokens 100")
 	fmt.Println("  agentad quality --demo --format text")
 	fmt.Println("  agentad quality --demo --mermaid")
 	fmt.Println("  agentad quality -intent 'need high-performance vector db' -bid 4.00")
