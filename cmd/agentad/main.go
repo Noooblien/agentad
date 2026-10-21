@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/Noooblien/agentad/pkg/attest"
@@ -21,6 +22,7 @@ import (
 	"github.com/Noooblien/agentad/pkg/pacing"
 	"github.com/Noooblien/agentad/pkg/pricing"
 	"github.com/Noooblien/agentad/pkg/privacy"
+	"github.com/Noooblien/agentad/pkg/safety"
 	"github.com/Noooblien/agentad/pkg/spec"
 	"github.com/Noooblien/agentad/pkg/tracker"
 )
@@ -658,6 +660,90 @@ func main() {
 		}
 		return
 
+	case "safety":
+		safeCmd := flag.NewFlagSet("safety", flag.ExitOnError)
+		demo := safeCmd.Bool("demo", false, "Run comprehensive brand safety, competitor exclusion, and alignment demo")
+		query := safeCmd.String("query", "", "User intent query to inspect for brand suitability and alignment")
+		adID := safeCmd.String("ad", "ad_pinecone_01", "Candidate ad identifier")
+		advertiser := safeCmd.String("advertiser", "Pinecone Serverless", "Candidate advertiser name")
+		category := safeCmd.String("category", "database", "Candidate ad category")
+		keywordsStr := safeCmd.String("keywords", "vector database, serverless, rag, hybrid search", "Comma-separated keywords")
+		mermaid := safeCmd.Bool("mermaid", false, "Output Mermaid flowchart markup of the safety decision gates")
+		format := safeCmd.String("format", "text", "Output format: text | markdown | json")
+		strict := safeCmd.Bool("strict", false, "Exit with code 1 if ad is blocked by safety or competitor exclusion")
+		_ = safeCmd.Parse(os.Args[2:])
+
+		engine := safety.NewEngine(safety.DefaultSafetyPolicy())
+
+		if *demo || len(os.Args) == 2 {
+			evals, summary, err := safety.RunDemoSuite()
+			if err != nil {
+				log.Fatalf("Safety demo execution failed: %v", err)
+			}
+
+			switch *format {
+			case "markdown":
+				fmt.Println(safety.RenderMarkdownReport(evals, summary))
+			case "json":
+				bytes, _ := safety.RenderJSON(evals)
+				fmt.Println(bytes)
+			default:
+				for _, ev := range evals {
+					fmt.Print(safety.RenderSafetyScorecard(ev))
+					if *mermaid {
+						fmt.Println(safety.RenderSafetyMermaid(ev))
+					}
+				}
+				fmt.Printf("\n\033[1;32m✓ Brand Safety Demo Complete.\033[0m Evaluated %d scenarios (%d eligible, %d blocked unsafe, %d competitor conflicts, %d irrelevant).\n\n",
+					summary.TotalEvaluated, summary.PassedCount, summary.UnsafeBlocked, summary.CompetitorBlocked, summary.IrrelevantBlocked)
+			}
+
+			if *strict && summary.PassedCount == 0 {
+				os.Exit(1)
+			}
+			return
+		}
+
+		if *query == "" {
+			log.Fatal("Usage: agentad safety -query <text> [--demo] [--mermaid] [--format text|markdown|json] [-strict]")
+		}
+
+		kwList := strings.Split(*keywordsStr, ",")
+		for i := range kwList {
+			kwList[i] = strings.TrimSpace(kwList[i])
+		}
+
+		candidate := safety.CandidateAd{
+			AdID:       *adID,
+			Advertiser: *advertiser,
+			Category:   *category,
+			Keywords:   kwList,
+		}
+
+		eval := engine.Evaluate(*query, candidate)
+
+		switch *format {
+		case "markdown":
+			fmt.Println(safety.RenderMarkdownReport([]*safety.SafetyEvaluation{eval}, &safety.SafetySummary{
+				TotalEvaluated: 1,
+				PassedCount:    func() int { if eval.Allowed { return 1 }; return 0 }(),
+				Evaluations:    []*safety.SafetyEvaluation{eval},
+			}))
+		case "json":
+			bytes, _ := safety.RenderJSON([]*safety.SafetyEvaluation{eval})
+			fmt.Println(bytes)
+		default:
+			fmt.Print(safety.RenderSafetyScorecard(eval))
+			if *mermaid {
+				fmt.Println(safety.RenderSafetyMermaid(eval))
+			}
+		}
+
+		if *strict && !eval.Allowed {
+			os.Exit(1)
+		}
+		return
+
 	default:
 		printHelp()
 	}
@@ -669,6 +755,7 @@ func printHelp() {
 	fmt.Println("  agentad <command> [arguments]")
 	fmt.Println("\nCommands:")
 	fmt.Println("  serve       Start the transparent MCP gateway & AAP HTTP protocol server")
+	fmt.Println("  safety      Brand safety, competitor negative targeting & semantic alignment governor")
 	fmt.Println("  privacy     Zero-PII scrubbing, semantic K-anonymity & differential privacy engine")
 	fmt.Println("  bandit      Contextual Multi-Armed Bandit, Bayesian Thompson Sampling & UCB1 exploration engine")
 	fmt.Println("  floor       Dynamic publisher floor price optimizer & buyer-side bid shading engine")
@@ -683,6 +770,9 @@ func printHelp() {
 	fmt.Println("  escrow      Manage micro-settlements, L402 payment hashes, and revenue distribution")
 	fmt.Println("  spec        Generate and inspect /.well-known/agent-ads.json specifications")
 	fmt.Println("\nExamples:")
+	fmt.Println("  agentad safety --demo --format text")
+	fmt.Println("  agentad safety --demo --mermaid")
+	fmt.Println("  agentad safety -query 'find best vector database for rag'")
 	fmt.Println("  agentad privacy --demo --format text")
 	fmt.Println("  agentad privacy --demo --mermaid")
 	fmt.Println("  agentad privacy -query \"Debug AWS AKIAIOSFODNN7EXAMPLE and call 555-123-4567\"")
