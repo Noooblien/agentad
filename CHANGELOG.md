@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Added
+- **Zero-Jailbreak End-to-End 12-Stage Orchestration Pipeline (`pkg/pipeline`)**: High-performance unified execution pipeline orchestrating traffic scrubbing, Zero-PII sanitization, vector matching, brand safety, dynamic reserve pricing, Vickrey RTB auction, quality scoring (AQS), PID pacing, placement quiet zones, AST factsheet purification, Ed25519 PoI attestation, and 70/20/10 micro-escrow settlement in sub-millisecond latency (`agentad pipeline`).
+- **Pipeline CLI Subcommands & Diagnostics (`cmd/agentad/pipeline_snippet.go`)**: Interactive ANSI terminal scorecard (`RenderPipelineScorecard`), Mermaid sequence diagrams (`RenderPipelineMermaid`), and structured Markdown audit reporting (`--demo`, `--query`, `--category`, `--stage`, `--tokens`, `--format`, `--mermaid`).
+### Added
 - **Supply-Side Manifest Crawler, Anti-SSRF Resolver & Publisher Registry (`pkg/discovery`)**: Automated discovery crawler and thread-safe registry resolving `/.well-known/agent-ads.json` with strict SSRF defense, IP pinning, conditional 304 revalidation, and multi-criteria ad slot querying (`agentad discovery`).
 - **SSRF & DNS Rebinding Hardening (`ssrf.go`)**: Restricts private CIDR blocks (RFC 1918, link-local metadata 169.254.0.0/16, loopback) and enforces IP pinning in custom `DialContext` to eliminate TOCTOU DNS rebinding exploits.
 - **Discovery CLI Subcommands & Telemetry (`cmd/agentad`)**: Interactive terminal scorecards (`RenderDiscoveryScorecard`), Mermaid resolution flowcharts (`RenderDiscoveryMermaid`), and Markdown reports (`--demo`, `--domain`, `--context`, `--floor`, `--format`).

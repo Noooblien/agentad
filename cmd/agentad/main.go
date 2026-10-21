@@ -845,6 +845,10 @@ func main() {
 		}
 		return
 
+	case "pipeline":
+		handlePipelineCmd()
+		return
+
 	case "discovery":
 		handleDiscoveryCmd()
 		return
@@ -966,6 +970,9 @@ func printHelp() {
 	fmt.Println("  escrow      Manage micro-settlements, L402 payment hashes, and revenue distribution")
 	fmt.Println("  spec        Generate and inspect /.well-known/agent-ads.json specifications")
 	fmt.Println("\nExamples:")
+	fmt.Println("  agentad pipeline --demo --format text")
+	fmt.Println("  agentad pipeline --demo --mermaid")
+	fmt.Println("  agentad pipeline -query \"find fastest serverless vector database\"")
 	fmt.Println("  agentad discovery --demo --format text")
 	fmt.Println("  agentad discovery --demo --mermaid")
 	fmt.Println("  agentad discovery -domain cloudinfra.io -context cloud_infrastructure")
