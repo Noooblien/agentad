@@ -22,6 +22,7 @@ import (
 	"github.com/Noooblien/agentad/pkg/pacing"
 	"github.com/Noooblien/agentad/pkg/pricing"
 	"github.com/Noooblien/agentad/pkg/privacy"
+	"github.com/Noooblien/agentad/pkg/quality"
 	"github.com/Noooblien/agentad/pkg/safety"
 	"github.com/Noooblien/agentad/pkg/spec"
 	"github.com/Noooblien/agentad/pkg/tracker"
@@ -744,6 +745,105 @@ func main() {
 		}
 		return
 
+	case "quality":
+		qualityCmd := flag.NewFlagSet("quality", flag.ExitOnError)
+		demo := qualityCmd.Bool("demo", false, "Run 4-scenario quality score, factsheet grounding & hallucination demo")
+		intent := qualityCmd.String("intent", "", "Agent user query prompt")
+		advertiser := qualityCmd.String("advertiser", "Pinecone Systems", "Candidate advertiser name")
+		adID := qualityCmd.String("ad", "ad_candidate_01", "Candidate ad ID")
+		category := qualityCmd.String("category", "ai-infra", "Candidate ad category")
+		bid := qualityCmd.Float64("bid", 3.50, "Candidate raw bid CPM in USD")
+		keywordsStr := qualityCmd.String("keywords", "vector, database, serverless, rag", "Comma-separated keywords")
+		mermaid := qualityCmd.Bool("mermaid", false, "Output Mermaid flowchart markup")
+		format := qualityCmd.String("format", "text", "Output format: text | markdown | json")
+		strict := qualityCmd.Bool("strict", false, "Exit with code 1 if ad is disqualified")
+		_ = qualityCmd.Parse(os.Args[2:])
+
+		engine := quality.NewEngine(quality.DefaultQualityConfig())
+
+		if *demo || len(os.Args) == 2 {
+			summary := quality.RunQualityDemo()
+
+			switch *format {
+			case "markdown":
+				fmt.Println(quality.RenderQualityMarkdown(summary))
+			case "json":
+				bytes, _ := json.MarshalIndent(summary, "", "  ")
+				fmt.Println(string(bytes))
+			default:
+				fmt.Print(quality.RenderTerminalScorecard(summary))
+				if *mermaid {
+					fmt.Println(quality.RenderQualityMermaid(summary))
+				}
+			}
+
+			if *strict && summary.DisqualifiedCount > 0 {
+				os.Exit(1)
+			}
+			return
+		}
+
+		if *intent == "" {
+			log.Fatal("Usage: agentad quality -intent <text> [--demo] [--mermaid] [--format text|markdown|json] [-strict]")
+		}
+
+		kwList := strings.Split(*keywordsStr, ",")
+		for i := range kwList {
+			kwList[i] = strings.TrimSpace(kwList[i])
+		}
+
+		candidate := quality.QualityCandidate{
+			AdID:       *adID,
+			Advertiser: *advertiser,
+			Category:   *category,
+			BidCPM:     *bid,
+			Keywords:   kwList,
+			Factsheet: map[string]interface{}{
+				"service_name":   *advertiser,
+				"api_endpoint":   "https://api.example.com/v1",
+				"authentication": "Bearer <TOKEN>",
+				"pricing":        fmt.Sprintf("$%.2f per operation", *bid/1000.0),
+			},
+		}
+
+		eval := engine.EvaluateCandidate(*intent, candidate)
+		summary := &quality.QualitySummary{
+			TotalEvaluated: 1,
+			EligibleCount: func() int {
+				if eval.Eligible {
+					return 1
+				}
+				return 0
+			}(),
+			DisqualifiedCount: func() int {
+				if !eval.Eligible {
+					return 1
+				}
+				return 0
+			}(),
+			AverageAQS:    eval.QualityScore,
+			TierBreakdown: map[quality.QualityTier]int{eval.Tier: 1},
+			Evaluations:   []*quality.QualityBreakdown{eval},
+		}
+
+		switch *format {
+		case "markdown":
+			fmt.Println(quality.RenderQualityMarkdown(summary))
+		case "json":
+			bytes, _ := json.MarshalIndent(eval, "", "  ")
+			fmt.Println(string(bytes))
+		default:
+			fmt.Print(quality.RenderTerminalScorecard(summary))
+			if *mermaid {
+				fmt.Println(quality.RenderQualityMermaid(summary))
+			}
+		}
+
+		if *strict && !eval.Eligible {
+			os.Exit(1)
+		}
+		return
+
 	default:
 		printHelp()
 	}
@@ -755,6 +855,7 @@ func printHelp() {
 	fmt.Println("  agentad <command> [arguments]")
 	fmt.Println("\nCommands:")
 	fmt.Println("  serve       Start the transparent MCP gateway & AAP HTTP protocol server")
+	fmt.Println("  quality     Agent Ad Quality Score (AQS), factsheet grounding & hallucination audit engine")
 	fmt.Println("  safety      Brand safety, competitor negative targeting & semantic alignment governor")
 	fmt.Println("  privacy     Zero-PII scrubbing, semantic K-anonymity & differential privacy engine")
 	fmt.Println("  bandit      Contextual Multi-Armed Bandit, Bayesian Thompson Sampling & UCB1 exploration engine")
@@ -770,6 +871,9 @@ func printHelp() {
 	fmt.Println("  escrow      Manage micro-settlements, L402 payment hashes, and revenue distribution")
 	fmt.Println("  spec        Generate and inspect /.well-known/agent-ads.json specifications")
 	fmt.Println("\nExamples:")
+	fmt.Println("  agentad quality --demo --format text")
+	fmt.Println("  agentad quality --demo --mermaid")
+	fmt.Println("  agentad quality -intent 'need high-performance vector db' -bid 4.00")
 	fmt.Println("  agentad safety --demo --format text")
 	fmt.Println("  agentad safety --demo --mermaid")
 	fmt.Println("  agentad safety -query 'find best vector database for rag'")
