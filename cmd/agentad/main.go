@@ -11,6 +11,7 @@ import (
 
 	"github.com/Noooblien/agentad/pkg/attest"
 	"github.com/Noooblien/agentad/pkg/auction"
+	"github.com/Noooblien/agentad/pkg/bandit"
 	"github.com/Noooblien/agentad/pkg/bench"
 	"github.com/Noooblien/agentad/pkg/escrow"
 	"github.com/Noooblien/agentad/pkg/fraud"
@@ -547,6 +548,45 @@ func main() {
 			return
 		}
 
+	case "bandit":
+		banditCmd := flag.NewFlagSet("bandit", flag.ExitOnError)
+		demo := banditCmd.Bool("demo", false, "Run contextual multi-armed bandit exploration & Thompson sampling simulation")
+		mermaid := banditCmd.Bool("mermaid", false, "Output Mermaid flowchart markup of bandit decision loops")
+		format := banditCmd.String("format", "text", "Output format: text | markdown | json")
+		strict := banditCmd.Bool("strict", false, "Exit with code 1 if average CTR drops below 10%")
+		_ = banditCmd.Parse(os.Args[2:])
+
+		if *demo || len(os.Args) == 2 {
+			summaries, err := bandit.RunDemoSuite()
+			if err != nil {
+				log.Fatalf("Bandit demo execution failed: %v", err)
+			}
+
+			switch *format {
+			case "markdown":
+				fmt.Println(bandit.GenerateMarkdownReport(summaries))
+			case "json":
+				bytes, _ := json.MarshalIndent(summaries, "", "  ")
+				fmt.Println(string(bytes))
+			default:
+				for _, s := range summaries {
+					fmt.Print(bandit.RenderBanditScorecard(s))
+					if *mermaid {
+						fmt.Println(bandit.GenerateBanditMermaid(s))
+					}
+				}
+			}
+
+			if *strict {
+				for _, s := range summaries {
+					if s.AverageCTR < 0.10 {
+						os.Exit(1)
+					}
+				}
+			}
+			return
+		}
+
 	default:
 		printHelp()
 	}
@@ -558,6 +598,7 @@ func printHelp() {
 	fmt.Println("  agentad <command> [arguments]")
 	fmt.Println("\nCommands:")
 	fmt.Println("  serve       Start the transparent MCP gateway & AAP HTTP protocol server")
+	fmt.Println("  bandit      Contextual Multi-Armed Bandit, Bayesian Thompson Sampling & UCB1 exploration engine")
 	fmt.Println("  floor       Dynamic publisher floor price optimizer & buyer-side bid shading engine")
 	fmt.Println("  track       Multi-touch conversion attribution & cryptographic Proof-of-Conversion (PoC)")
 	fmt.Println("  bench       Run empirical benchmarks for prompt injection defenses and SLA budgets")
