@@ -59,6 +59,7 @@ sequenceDiagram
 
 ## Key Features
 
+* **🤖 Autonomous DSP Bidder Engine & Multi-Strategy Valuation:** Demand-side automated bidding agent optimizing multi-campaign advertiser portfolios in sub-50ms RTB auctions; features multi-strategy valuation (`FIXED_CPM`, `TARGET_CPA`, `EXPECTED_VALUE`, `COMPETITIVE_SHADED`), negative keyword filtering, budget pacing guardrails, dynamic buyer bid shading, and Ed25519 digital signature attestation (`agentad bidder`).
 * **🚀 Zero-Jailbreak End-to-End 12-Stage Pipeline Orchestrator:** Unified sequential evaluation pipeline chaining traffic scrubbing, Zero-PII sanitization, vector matching, brand safety, dynamic floors, Vickrey RTB auction, AQS quality scoring, PID pacing, cognitive quiet zones, AST purification, Ed25519 PoI attestation, and 70/20/10 escrow settlement in sub-millisecond latency (`agentad pipeline`).
 * **📈 Real-Time Telemetry & Prometheus Metrics Exporter:** Production-grade concurrent metrics registry tracking stage-by-stage latency percentiles (P50, P90, P95, P99), SLA compliance (<50ms target), second-price clearing distributions, and 70/20/10 revenue accounting with standard Prometheus exposition (`agentad telemetry`).
 * **🌐 Supply-Side Manifest Discovery & Well-Known Registry:** High-performance automated discovery crawler and multi-tenant publisher registry resolving `/.well-known/agent-ads.json`; enforces strict anti-SSRF IP pinning & DNS rebinding defense, ETag/Last-Modified conditional 304 revalidation, response size guardrails, publisher domain cryptographic verification, and multi-criteria slot search (`agentad discovery`).
@@ -285,6 +286,24 @@ Executes the complete unified AAP pipeline across all 12 zero-jailbreak governan
 
 # Export Markdown pipeline scorecard report:
 ./bin/agentad pipeline --demo --format markdown
+```
+
+### Autonomous DSP Bidder Engine (`agentad bidder`)
+
+Simulates multi-campaign demand-side programmatic bidding with dynamic valuation, buyer bid shading, and Ed25519 digital signatures:
+
+```bash
+# Run multi-campaign autonomous DSP bidder simulation:
+./bin/agentad bidder --demo
+
+# Render Mermaid sequence diagram of the RTB bidding lifecycle:
+./bin/agentad bidder --demo --mermaid
+
+# Export JSON performance snapshot:
+./bin/agentad bidder --demo --json
+
+# Export Markdown summary report:
+./bin/agentad bidder --demo --format markdown
 ```
 
 ### Real-Time Telemetry & Prometheus Metrics Exporter (`agentad telemetry`)
