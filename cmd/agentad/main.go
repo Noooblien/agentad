@@ -845,6 +845,10 @@ func main() {
 		}
 		return
 
+	case "discovery":
+		handleDiscoveryCmd()
+		return
+
 	case "placement":
 		placeCmd := flag.NewFlagSet("placement", flag.ExitOnError)
 		demo := placeCmd.Bool("demo", false, "Run 4-scenario placement, cognitive fatigue & token economics demo")
@@ -962,6 +966,9 @@ func printHelp() {
 	fmt.Println("  escrow      Manage micro-settlements, L402 payment hashes, and revenue distribution")
 	fmt.Println("  spec        Generate and inspect /.well-known/agent-ads.json specifications")
 	fmt.Println("\nExamples:")
+	fmt.Println("  agentad discovery --demo --format text")
+	fmt.Println("  agentad discovery --demo --mermaid")
+	fmt.Println("  agentad discovery -domain cloudinfra.io -context cloud_infrastructure")
 	fmt.Println("  agentad placement --demo --format text")
 	fmt.Println("  agentad placement --demo --mermaid")
 	fmt.Println("  agentad placement -stage EXPLORATION -bid 5.00 -tokens 100")

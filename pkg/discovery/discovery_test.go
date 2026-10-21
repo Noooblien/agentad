@@ -380,3 +380,34 @@ func TestRegistry_ConcurrentAccess(t *testing.T) {
 
 	wg.Wait()
 }
+
+func TestDiscovery_DemoAndRenderers(t *testing.T) {
+	summary := RunDiscoveryDemo()
+	if summary.TotalCrawled != 3 {
+		t.Fatalf("expected 3 total crawled, got %d", summary.TotalCrawled)
+	}
+	if summary.VerifiedPublishers != 1 {
+		t.Fatalf("expected 1 verified publisher, got %d", summary.VerifiedPublishers)
+	}
+	if summary.RejectedPublishers != 2 {
+		t.Fatalf("expected 2 rejected publishers, got %d", summary.RejectedPublishers)
+	}
+	if summary.SlotsFound == 0 {
+		t.Fatalf("expected discovered slots > 0")
+	}
+
+	scorecard := RenderDiscoveryScorecard(summary)
+	if !strings.Contains(scorecard, "SUPPLY-SIDE MANIFEST CRAWLER") {
+		t.Fatalf("expected scorecard header in output")
+	}
+
+	md := RenderDiscoveryMarkdown(summary)
+	if !strings.Contains(md, "Supply-Side Manifest Discovery Report") {
+		t.Fatalf("expected markdown header in output")
+	}
+
+	mermaid := RenderDiscoveryMermaid(summary)
+	if !strings.Contains(mermaid, "flowchart TD") {
+		t.Fatalf("expected mermaid flowchart in output")
+	}
+}
