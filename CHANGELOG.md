@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ---
 
 ## [Unreleased]
+### Added
+- **Real-Time Telemetry & Prometheus Metrics Exporter (`pkg/telemetry`)**: Production-grade concurrent metrics registry and observability engine tracking stage-by-stage latency percentiles (P50, P90, P95, P99), SLA compliance (<50ms target), second-price auction clearing distributions, and 70/20/10 revenue accounting (`agentad telemetry`).
+- **Prometheus Text Exposition Format (`RenderPrometheus`)**: Standard Prometheus `# HELP` and `# TYPE` exposition with label vectors (`aap_pipeline_requests_total`, `aap_pipeline_duration_ms`, `aap_stage_duration_ms`, `aap_clearing_price_cpm`, `aap_revenue_usd_total`, `aap_security_threats_blocked_total`, `aap_placement_suppressions_total`).
+- **Telemetry CLI & Observability Scorecards (`cmd/agentad/telemetry_snippet.go`)**: Multi-scenario workload simulation, ANSI terminal scorecards (`RenderTelemetryScorecard`), Markdown reports (`RenderTelemetryMarkdown`), and Mermaid architecture diagrams (`--demo`, `--prometheus`, `--json`, `--format`, `--mermaid`, `--strict`).
+- **Zero-Jailbreak End-to-End 12-Stage Orchestration Pipeline (`pkg/pipeline`)**: High-performance unified execution pipeline orchestrating traffic scrubbing, Zero-PII sanitization, vector matching, brand safety, dynamic reserve pricing, Vickrey RTB auction, quality scoring (AQS), PID pacing, placement quiet zones, AST factsheet purification, Ed25519 PoI attestation, and 70/20/10 micro-escrow settlement in sub-millisecond latency (`agentad pipeline`).
+- **Pipeline CLI Subcommands & Diagnostics (`cmd/agentad/pipeline_snippet.go`)**: Interactive ANSI terminal scorecard (`RenderPipelineScorecard`), Mermaid sequence diagrams (`RenderPipelineMermaid`), and structured Markdown audit reporting (`--demo`, `--query`, `--category`, `--stage`, `--tokens`, `--format`, `--mermaid`).
+### Added
+- **Supply-Side Manifest Crawler, Anti-SSRF Resolver & Publisher Registry (`pkg/discovery`)**: Automated discovery crawler and thread-safe registry resolving `/.well-known/agent-ads.json` with strict SSRF defense, IP pinning, conditional 304 revalidation, and multi-criteria ad slot querying (`agentad discovery`).
+- **SSRF & DNS Rebinding Hardening (`ssrf.go`)**: Restricts private CIDR blocks (RFC 1918, link-local metadata 169.254.0.0/16, loopback) and enforces IP pinning in custom `DialContext` to eliminate TOCTOU DNS rebinding exploits.
+- **Discovery CLI Subcommands & Telemetry (`cmd/agentad`)**: Interactive terminal scorecards (`RenderDiscoveryScorecard`), Mermaid resolution flowcharts (`RenderDiscoveryMermaid`), and Markdown reports (`--demo`, `--domain`, `--context`, `--floor`, `--format`).
 
 ### Added
 - **Contextual Multi-Armed Bandit & Bayesian Thompson Sampling Engine (`pkg/bandit`)**: High-performance exploration/exploitation engine resolving the advertiser cold-start starvation dilemma and optimizing expected revenue ($eCPM = pCTR \times pCVR \times Bid \times Relevance$) in real-time (`agentad bandit`).

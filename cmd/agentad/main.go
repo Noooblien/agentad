@@ -845,6 +845,18 @@ func main() {
 		}
 		return
 
+	case "telemetry":
+		handleTelemetryCmd()
+		return
+
+	case "pipeline":
+		handlePipelineCmd()
+		return
+
+	case "discovery":
+		handleDiscoveryCmd()
+		return
+
 	case "placement":
 		placeCmd := flag.NewFlagSet("placement", flag.ExitOnError)
 		demo := placeCmd.Bool("demo", false, "Run 4-scenario placement, cognitive fatigue & token economics demo")
@@ -945,6 +957,9 @@ func printHelp() {
 	fmt.Println("  agentad <command> [arguments]")
 	fmt.Println("\nCommands:")
 	fmt.Println("  serve       Start the transparent MCP gateway & AAP HTTP protocol server")
+	fmt.Println("  telemetry   Prometheus metrics exporter, latency SLA percentiles & telemetry dashboard")
+	fmt.Println("  pipeline    End-to-end 12-stage AAP execution pipeline & zero-jailbreak orchestrator")
+	fmt.Println("  discovery   Supply-side manifest crawler, anti-SSRF resolver & publisher registry")
 	fmt.Println("  placement   Agent slot placement, frequency capping & attention budget arbiter")
 	fmt.Println("  quality     Agent Ad Quality Score (AQS), factsheet grounding & hallucination audit engine")
 	fmt.Println("  safety      Brand safety, competitor negative targeting & semantic alignment governor")
@@ -962,6 +977,15 @@ func printHelp() {
 	fmt.Println("  escrow      Manage micro-settlements, L402 payment hashes, and revenue distribution")
 	fmt.Println("  spec        Generate and inspect /.well-known/agent-ads.json specifications")
 	fmt.Println("\nExamples:")
+	fmt.Println("  agentad telemetry --demo --format text")
+	fmt.Println("  agentad telemetry --demo --prometheus")
+	fmt.Println("  agentad telemetry --demo --mermaid")
+	fmt.Println("  agentad pipeline --demo --format text")
+	fmt.Println("  agentad pipeline --demo --mermaid")
+	fmt.Println("  agentad pipeline -query \"find fastest serverless vector database\"")
+	fmt.Println("  agentad discovery --demo --format text")
+	fmt.Println("  agentad discovery --demo --mermaid")
+	fmt.Println("  agentad discovery -domain cloudinfra.io -context cloud_infrastructure")
 	fmt.Println("  agentad placement --demo --format text")
 	fmt.Println("  agentad placement --demo --mermaid")
 	fmt.Println("  agentad placement -stage EXPLORATION -bid 5.00 -tokens 100")

@@ -59,6 +59,9 @@ sequenceDiagram
 
 ## Key Features
 
+* **🚀 Zero-Jailbreak End-to-End 12-Stage Pipeline Orchestrator:** Unified sequential evaluation pipeline chaining traffic scrubbing, Zero-PII sanitization, vector matching, brand safety, dynamic floors, Vickrey RTB auction, AQS quality scoring, PID pacing, cognitive quiet zones, AST purification, Ed25519 PoI attestation, and 70/20/10 escrow settlement in sub-millisecond latency (`agentad pipeline`).
+* **📈 Real-Time Telemetry & Prometheus Metrics Exporter:** Production-grade concurrent metrics registry tracking stage-by-stage latency percentiles (P50, P90, P95, P99), SLA compliance (<50ms target), second-price clearing distributions, and 70/20/10 revenue accounting with standard Prometheus exposition (`agentad telemetry`).
+* **🌐 Supply-Side Manifest Discovery & Well-Known Registry:** High-performance automated discovery crawler and multi-tenant publisher registry resolving `/.well-known/agent-ads.json`; enforces strict anti-SSRF IP pinning & DNS rebinding defense, ETag/Last-Modified conditional 304 revalidation, response size guardrails, publisher domain cryptographic verification, and multi-criteria slot search (`agentad discovery`).
 * **🧠 Agent Slot Placement, Frequency Capping & Attention Budget Arbiter:** Policy-governed arbitration engine preventing agent context clutter and cognitive fatigue across multi-turn reasoning loops; enforces exponential decay turn fatigue modeling, advertiser cooldown spacing, cognitive quiet zone suppression during deep reasoning / execution stages, and economic token ROI hurdles ensuring ad yield exceeds token inference costs (`agentad placement`).
 * **🌟 Agent Ad Quality Score (AQS) & Factsheet Grounding Engine:** Comprehensive 4-pillar quality audit measuring factual claim verifiability, semantic intent alignment, historical agent adoption propensity, and hallucination penalties; calculates 1.0 - 10.0 AQS scale, awards up to 20% clearing discount to high-quality factual ads, penalizes or disqualifies spam/hype claims, and enforces quality-weighted AdRank (`agentad quality`).
 * **🛡️ Brand Safety, Competitor Negative Targeting & Semantic Alignment Engine:** Multi-stage safety pipeline featuring 4-gate verification: prompt toxicity / unsafe context filtering, publisher category blocklists, advertiser competitor exclusion, and minimum semantic alignment scoring with strict verification mode (`agentad safety`).
@@ -264,6 +267,42 @@ Governs contextual slot selection (`TOOL_DEFINITION`, `TOOL_RESPONSE`, `SCRATCHP
 
 # Export Markdown summary report:
 ./bin/agentad placement --demo --format markdown
+```
+
+### End-to-End 12-Stage Orchestration Pipeline (`agentad pipeline`)
+
+Executes the complete unified AAP pipeline across all 12 zero-jailbreak governance, security, economic, and settlement stages:
+
+```bash
+# Run 4-scenario end-to-end pipeline demonstration:
+./bin/agentad pipeline --demo
+
+# Render Mermaid sequence diagram depicting the 12-stage execution flow:
+./bin/agentad pipeline --demo --mermaid
+
+# Evaluate custom query through the full 12-stage pipeline:
+./bin/agentad pipeline -query "find fastest serverless vector database"
+
+# Export Markdown pipeline scorecard report:
+./bin/agentad pipeline --demo --format markdown
+```
+
+### Real-Time Telemetry & Prometheus Metrics Exporter (`agentad telemetry`)
+
+Monitors stage latencies, SLA budgets, threat neutralizations, and programmatic revenue accounting with standard Prometheus exposition:
+
+```bash
+# Run multi-scenario telemetry workload simulation:
+./bin/agentad telemetry --demo
+
+# Export metrics in Prometheus text exposition format:
+./bin/agentad telemetry --demo --prometheus
+
+# Render Mermaid observability architecture flowchart:
+./bin/agentad telemetry --demo --mermaid
+
+# Export JSON metrics snapshot:
+./bin/agentad telemetry --demo --json
 ```
 
 ---
