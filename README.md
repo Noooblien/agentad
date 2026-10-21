@@ -73,7 +73,7 @@ sequenceDiagram
 * **⚡ Sub-50ms RTB Auction Engine:** Modified second-price quality-weighted auction ($\text{Score} = \text{BidCPM} \times \text{Relevance} \times \text{TrustScore}$).
 * **🔒 Cryptographic Proof-of-Impression (PoI):** Ed25519 digital signatures linking reasoning context digest, auction ID, campaign ID, clearing price, and replay-proof nonces.
 * **💰 Micro-Settlement Escrow & L402 Clearing:** Multi-party programmatic revenue distribution (70% Publisher, 20% Agent Host, 10% Protocol Treasury) with hash-chained cryptographic audit receipts and HTTP 402 Lightning token support.
-* **🔌 Native Model Context Protocol (MCP) Reverse Proxy:** Transparently wraps any existing upstream MCP server or runs standalone to annotate tools and monetize agent tool-calls.
+* **🔌 Native Model Context Protocol (MCP) Gateway & SSE Transport:** Transparently wraps any existing upstream MCP server or runs standalone to annotate tools and monetize agent tool-calls; supports HTTP POST JSON-RPC and official MCP 2024-11-05 Server-Sent Events (SSE) streaming transport (`/sse`, `/message`), unified 12-stage pipeline evaluation, and Prometheus telemetry (`/metrics`, `/telemetry`).
 * **🌐 Web Standard Specification:** Full support for `/.well-known/agent-ads.json`.
 
 ---

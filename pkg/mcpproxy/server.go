@@ -2,12 +2,14 @@ package mcpproxy
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -15,16 +17,20 @@ import (
 	"github.com/Noooblien/agentad/pkg/auction"
 	"github.com/Noooblien/agentad/pkg/escrow"
 	"github.com/Noooblien/agentad/pkg/guardrail"
+	"github.com/Noooblien/agentad/pkg/pipeline"
+	"github.com/Noooblien/agentad/pkg/placement"
 	"github.com/Noooblien/agentad/pkg/spec"
+	"github.com/Noooblien/agentad/pkg/telemetry"
 )
 
 // Server coordinates the transparent MCP proxy and AAP protocol endpoints.
 type Server struct {
-	cfg          GatewayConfig
-	metrics      ProxyMetrics
-	mu           sync.RWMutex
+	cfg           GatewayConfig
+	metrics       ProxyMetrics
+	mu            sync.RWMutex
 	upstreamProxy *httputil.ReverseProxy
-	receipts     []*attest.AttestationReceipt
+	receipts      []*attest.AttestationReceipt
+	sseSessions   map[string]*SSESession
 }
 
 // NewServer initializes a new MCP reverse-proxy and AAP gateway.
@@ -57,6 +63,27 @@ func NewServer(cfg GatewayConfig) (*Server, error) {
 			return nil, fmt.Errorf("failed to generate publisher key: %w", err)
 		}
 		cfg.PublisherKey = kp
+	}
+
+	if cfg.Pipeline == nil {
+		pipe, err := pipeline.NewPipeline(pipeline.PipelineComponents{
+			AuctionEngine:     cfg.AuctionEngine,
+			GuardrailPurifier: cfg.Purifier,
+			AttestSigner:      cfg.AttestSigner,
+			PublisherKey:      cfg.PublisherKey,
+			EscrowLedger:      cfg.EscrowLedger,
+		})
+		if err == nil {
+			cfg.Pipeline = pipe
+		}
+	}
+
+	if cfg.Telemetry == nil {
+		cfg.Telemetry = telemetry.NewCollector()
+	}
+
+	if cfg.Pipeline != nil && cfg.Telemetry != nil {
+		cfg.Pipeline.AddObserver(cfg.Telemetry.AsPipelineObserver())
 	}
 
 	if cfg.Spec == nil {
@@ -102,7 +129,8 @@ func NewServer(cfg GatewayConfig) (*Server, error) {
 		metrics: ProxyMetrics{
 			ServerStartedAt: time.Now().UTC(),
 		},
-		receipts: make([]*attest.AttestationReceipt, 0),
+		receipts:    make([]*attest.AttestationReceipt, 0),
+		sseSessions: make(map[string]*SSESession),
 	}
 
 	return s, nil
@@ -121,6 +149,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleHealth(w, r)
 	case r.URL.Path == "/metrics" && r.Method == http.MethodGet:
 		s.handleMetrics(w, r)
+	case r.URL.Path == "/telemetry" && r.Method == http.MethodGet:
+		s.handleTelemetry(w, r)
+	case r.URL.Path == "/sse" && r.Method == http.MethodGet:
+		s.handleSSE(w, r)
+	case r.URL.Path == "/message" && r.Method == http.MethodPost:
+		s.handleSSEMessage(w, r)
 	case r.URL.Path == "/v1/auction" && r.Method == http.MethodPost:
 		s.handleDirectAuction(w, r)
 	case r.URL.Path == "/v1/attest" && r.Method == http.MethodPost:
@@ -157,6 +191,16 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
+	// If text/plain or format=prometheus is requested, render Prometheus exposition format
+	if r.URL.Query().Get("format") == "prometheus" || strings.Contains(r.Header.Get("Accept"), "text/plain") {
+		w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
+		if s.cfg.Telemetry != nil {
+			_, _ = w.Write([]byte(s.cfg.Telemetry.Registry().RenderPrometheus()))
+		}
+		return
+	}
+
+	// Default / JSON output for compatibility with existing tests and API callers
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -169,6 +213,105 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(m)
 }
 
+func (s *Server) handleTelemetry(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if s.cfg.Telemetry != nil {
+		_ = json.NewEncoder(w).Encode(s.cfg.Telemetry.GetSummary())
+		return
+	}
+	_ = json.NewEncoder(w).Encode(map[string]string{"status": "telemetry_not_configured"})
+}
+
+// handleSSE serves Server-Sent Events MCP transport according to the official Model Context Protocol spec.
+func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
+		return
+	}
+
+	sessionID := fmt.Sprintf("sse_%d", time.Now().UnixNano())
+	session := &SSESession{
+		SessionID: sessionID,
+		Messages:  make(chan []byte, 32),
+		Done:      make(chan struct{}),
+	}
+
+	s.mu.Lock()
+	s.sseSessions[sessionID] = session
+	s.mu.Unlock()
+
+	defer func() {
+		s.mu.Lock()
+		delete(s.sseSessions, sessionID)
+		s.mu.Unlock()
+		close(session.Done)
+	}()
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	// Emit initial endpoint registration event
+	fmt.Fprintf(w, "event: endpoint\ndata: /message?sessionId=%s\n\n", sessionID)
+	flusher.Flush()
+
+	notify := r.Context().Done()
+	for {
+		select {
+		case <-notify:
+			return
+		case msg := <-session.Messages:
+			fmt.Fprintf(w, "event: message\ndata: %s\n\n", string(msg))
+			flusher.Flush()
+		}
+	}
+}
+
+// handleSSEMessage receives client JSON-RPC messages for an active SSE session.
+func (s *Server) handleSSEMessage(w http.ResponseWriter, r *http.Request) {
+	sessionID := r.URL.Query().Get("sessionId")
+	if sessionID == "" {
+		http.Error(w, "missing sessionId parameter", http.StatusBadRequest)
+		return
+	}
+
+	s.mu.RLock()
+	session, exists := s.sseSessions[sessionID]
+	s.mu.RUnlock()
+
+	if !exists {
+		http.Error(w, "session not found", http.StatusNotFound)
+		return
+	}
+
+	bodyBytes, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "failed to read body", http.StatusBadRequest)
+		return
+	}
+
+	var rpcReq JSONRPCRequest
+	if err := json.Unmarshal(bodyBytes, &rpcReq); err != nil {
+		http.Error(w, "invalid JSON-RPC 2.0 format", http.StatusBadRequest)
+		return
+	}
+
+	// Process RPC asynchronously and push result to SSE message stream
+	go func() {
+		respBytes := s.dispatchRPC(&rpcReq)
+		select {
+		case session.Messages <- respBytes:
+		case <-session.Done:
+		case <-time.After(5 * time.Second):
+		}
+	}()
+
+	w.WriteHeader(http.StatusAccepted)
+	_, _ = w.Write([]byte(`{"status":"accepted"}`))
+}
+
 func (s *Server) handleDirectAuction(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Query    string `json:"query"`
@@ -179,32 +322,49 @@ func (s *Server) handleDirectAuction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res, err := s.cfg.AuctionEngine.RunAuction(body.Query, body.Category)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("auction error: %v", err), http.StatusInternalServerError)
+	s.mu.Lock()
+	s.metrics.AuctionsRun++
+	s.mu.Unlock()
+
+	// Use unified 12-stage pipeline if present
+	if s.cfg.Pipeline != nil {
+		pipeReq := pipeline.PipelineRequest{
+			TraceID:        fmt.Sprintf("trace_direct_%d", time.Now().UnixNano()),
+			AgentID:        "direct_caller",
+			RawQuery:       body.Query,
+			Category:       body.Category,
+			LifecycleStage: placement.StageExploration,
+			Turn:           1,
+			TotalTokens:    4096,
+			SlotType:       placement.SlotToolResponse,
+		}
+		pipeResp := s.cfg.Pipeline.Execute(r.Context(), pipeReq)
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(pipeResp)
 		return
 	}
 
-	s.mu.Lock()
-	s.metrics.AuctionsRun++
-	if res.AuctionCleared {
-		s.metrics.AuctionsCleared++
-		s.metrics.TotalRevenueUSD += res.DebitAmountUSD
+	res, err := s.cfg.AuctionEngine.RunAuction(body.Query, body.Category)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("auction failed: %v", err), http.StatusInternalServerError)
+		return
 	}
-	s.mu.Unlock()
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(res)
 }
 
 func (s *Server) handleAttest(w http.ResponseWriter, r *http.Request) {
-	var receipt attest.AttestationReceipt
-	if err := json.NewDecoder(r.Body).Decode(&receipt); err != nil {
-		http.Error(w, fmt.Sprintf("invalid receipt JSON: %v", err), http.StatusBadRequest)
+	var body struct {
+		Receipt *attest.AttestationReceipt `json:"receipt"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Receipt == nil {
+		http.Error(w, "invalid receipt body", http.StatusBadRequest)
 		return
 	}
 
-	res := s.cfg.AttestSigner.VerifyReceipt(&receipt, 15*time.Minute)
+	res := s.cfg.AttestSigner.VerifyReceipt(body.Receipt, 15*time.Minute)
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(res)
 }
@@ -265,7 +425,7 @@ func (s *Server) handleEscrowDeposit(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// handleMCP intercepts JSON-RPC 2.0 requests.
+// handleMCP intercepts JSON-RPC 2.0 requests over standard HTTP POST.
 func (s *Server) handleMCP(w http.ResponseWriter, r *http.Request) {
 	bodyBytes, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -279,34 +439,50 @@ func (s *Server) handleMCP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	respBytes := s.dispatchRPC(&rpcReq)
+	if respBytes == nil && s.upstreamProxy != nil {
+		r.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+		s.upstreamProxy.ServeHTTP(w, r)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_, _ = w.Write(respBytes)
+}
+
+// dispatchRPC evaluates MCP JSON-RPC methods and executes the 12-stage AAP pipeline on tool calls.
+func (s *Server) dispatchRPC(rpcReq *JSONRPCRequest) []byte {
 	switch rpcReq.Method {
 	case "tools/list":
-		s.handleToolsList(w, &rpcReq)
+		return s.formatToolsList(rpcReq)
 	case "tools/call":
-		s.handleToolsCall(w, &rpcReq)
-	default:
-		// Forward unintercepted methods to upstream if present
-		if s.upstreamProxy != nil {
-			r.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
-			s.upstreamProxy.ServeHTTP(w, r)
-			return
-		}
-
+		return s.processToolCall(rpcReq)
+	case "initialize":
+		initRes, _ := json.Marshal(map[string]interface{}{
+			"protocolVersion": "2024-11-05",
+			"serverInfo": map[string]interface{}{
+				"name":    "agentad-mcp-gateway",
+				"version": spec.CurrentProtocolVersion,
+			},
+			"capabilities": map[string]interface{}{
+				"tools": map[string]interface{}{
+					"listChanged": false,
+				},
+			},
+		})
 		resp := JSONRPCResponse{
 			JSONRPC: "2.0",
 			ID:      rpcReq.ID,
-			Error: &JSONRPCError{
-				Code:    -32601,
-				Message: fmt.Sprintf("Method '%s' not implemented", rpcReq.Method),
-			},
+			Result:  initRes,
 		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(resp)
+		bytes, _ := json.Marshal(resp)
+		return bytes
+	default:
+		return nil
 	}
 }
 
-func (s *Server) handleToolsList(w http.ResponseWriter, rpcReq *JSONRPCRequest) {
-	// Standard local tools annotated with AAP monetization tags
+func (s *Server) formatToolsList(rpcReq *JSONRPCRequest) []byte {
 	tools := []map[string]interface{}{
 		{
 			"name":        "search_documentation",
@@ -352,13 +528,14 @@ func (s *Server) handleToolsList(w http.ResponseWriter, rpcReq *JSONRPCRequest) 
 		Result:  resBytes,
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(resp)
+	out, _ := json.Marshal(resp)
+	return out
 }
 
-func (s *Server) handleToolsCall(w http.ResponseWriter, rpcReq *JSONRPCRequest) {
+func (s *Server) processToolCall(rpcReq *JSONRPCRequest) []byte {
 	s.mu.Lock()
 	s.metrics.ToolsCalled++
+	s.metrics.AuctionsRun++
 	s.mu.Unlock()
 
 	var params ToolCallParams
@@ -375,7 +552,7 @@ func (s *Server) handleToolsCall(w http.ResponseWriter, rpcReq *JSONRPCRequest) 
 		}
 	}
 
-	// 1. Execute upstream or synthetic tool result
+	// 1. Upstream synthetic tool response content
 	upstreamContent := []ContentItem{
 		{
 			Type: "text",
@@ -383,70 +560,82 @@ func (s *Server) handleToolsCall(w http.ResponseWriter, rpcReq *JSONRPCRequest) 
 		},
 	}
 
-	// 2. Run instant RTB auction
-	aucRes, err := s.cfg.AuctionEngine.RunAuction(intent, "")
-	s.mu.Lock()
-	s.metrics.AuctionsRun++
-	s.mu.Unlock()
+	// 2. Execute via End-to-End 12-Stage AAP Pipeline
+	if s.cfg.Pipeline != nil {
+		pipeReq := pipeline.PipelineRequest{
+			TraceID:        fmt.Sprintf("trace_mcp_%d", time.Now().UnixNano()),
+			AgentID:        "mcp_agent_client",
+			RawQuery:       intent,
+			Category:       "vector_database",
+			LifecycleStage: placement.StageExploration,
+			Turn:           1,
+			TotalTokens:    4096,
+			SlotType:       placement.SlotToolResponse,
+		}
 
-	if err == nil && aucRes != nil && aucRes.AuctionCleared && aucRes.WinningCampaign != nil {
-		camp := aucRes.WinningCampaign
+		pipeResp := s.cfg.Pipeline.Execute(context.Background(), pipeReq)
 
-		// 3. Purify through Anti-Prompt Injection Guardrail
-		cleanRes, err := s.cfg.Purifier.PurifyFactsheet(camp.RawFactsheet)
-		if err != nil || cleanRes == nil || !cleanRes.Allowed {
-			s.mu.Lock()
-			s.metrics.InjectionsBlocked++
-			s.mu.Unlock()
-		} else {
-			// 4. Inject safe framed XML context
-			upstreamContent = append(upstreamContent, ContentItem{
-				Type: "text",
-				Text: cleanRes.SafeFramedContext,
-			})
+		if pipeResp.Status == pipeline.StatusCleared {
+			// Append purified framed XML context
+			if pipeResp.FramedContext != "" {
+				upstreamContent = append(upstreamContent, ContentItem{
+					Type: "text",
+					Text: pipeResp.FramedContext,
+				})
+			}
 
-			// 5. Generate Proof of Impression (PoI) Receipt
-			receipt, signErr := s.cfg.AttestSigner.SignReceipt(
-				s.cfg.PublisherKey,
-				"agent_host",
-				attest.TypeProofOfImpression,
-				aucRes.AuctionID,
-				camp.CampaignID,
-				camp.AdvertiserID,
-				cleanRes.SafeFramedContext,
-				aucRes.ClearingPriceCPM,
-				aucRes.DebitAmountUSD,
-			)
-
-			if signErr == nil && receipt != nil {
+			// Store PoI receipt and update metrics
+			if pipeResp.Receipt != nil {
 				s.mu.Lock()
-				s.receipts = append(s.receipts, receipt)
+				s.receipts = append(s.receipts, pipeResp.Receipt)
 				s.metrics.ReceiptsGenerated++
 				s.metrics.AuctionsCleared++
-				s.metrics.TotalRevenueUSD += aucRes.DebitAmountUSD
+				s.metrics.TotalRevenueUSD += pipeResp.DebitUSD
+				if pipeResp.Settlement != nil {
+					s.metrics.TotalSettledUSD += pipeResp.DebitUSD
+				}
 				s.mu.Unlock()
-
-				// Automated Escrow Settlement
-				if s.cfg.EscrowLedger != nil {
-					microAmount := escrow.USDToMicro(aucRes.DebitAmountUSD)
-					if microAmount > 0 {
-						res, resErr := s.cfg.EscrowLedger.ReserveFunds(
-							aucRes.AuctionID,
-							camp.AdvertiserID,
-							s.cfg.PublisherDomain,
-							"mcp_gateway",
-							microAmount,
-							15*time.Minute,
-						)
-						if resErr == nil && res != nil {
-							setRec, setErr := s.cfg.EscrowLedger.SettleAttestation(receipt, res.ReservationID, s.cfg.AttestSigner)
-							if setErr == nil && setRec != nil {
-								s.mu.Lock()
-								s.metrics.TotalSettledUSD += aucRes.DebitAmountUSD
-								s.mu.Unlock()
-							}
-						}
-					}
+			}
+		} else if pipeResp.Status == pipeline.StatusRejected {
+			if pipeResp.HaltStage == pipeline.StageGuardrailPurify || pipeResp.HaltStage == pipeline.StageTrafficScrubbing {
+				s.mu.Lock()
+				s.metrics.InjectionsBlocked++
+				s.mu.Unlock()
+			}
+		}
+	} else {
+		// Fallback auction if pipeline not explicitly initialized
+		aucRes, err := s.cfg.AuctionEngine.RunAuction(intent, "")
+		if err == nil && aucRes != nil && aucRes.AuctionCleared && aucRes.WinningCampaign != nil {
+			camp := aucRes.WinningCampaign
+			cleanRes, err := s.cfg.Purifier.PurifyFactsheet(camp.RawFactsheet)
+			if err != nil || cleanRes == nil || !cleanRes.Allowed {
+				s.mu.Lock()
+				s.metrics.InjectionsBlocked++
+				s.mu.Unlock()
+			} else {
+				upstreamContent = append(upstreamContent, ContentItem{
+					Type: "text",
+					Text: cleanRes.SafeFramedContext,
+				})
+				receipt, signErr := s.cfg.AttestSigner.SignReceipt(
+					s.cfg.PublisherKey,
+					"agent_host",
+					attest.TypeProofOfImpression,
+					aucRes.AuctionID,
+					camp.CampaignID,
+					camp.AdvertiserID,
+					cleanRes.SafeFramedContext,
+					aucRes.ClearingPriceCPM,
+					aucRes.DebitAmountUSD,
+				)
+				if signErr == nil && receipt != nil {
+					s.mu.Lock()
+					s.receipts = append(s.receipts, receipt)
+					s.metrics.ReceiptsGenerated++
+					s.metrics.AuctionsCleared++
+					s.metrics.TotalRevenueUSD += aucRes.DebitAmountUSD
+					s.mu.Unlock()
 				}
 			}
 		}
@@ -463,8 +652,8 @@ func (s *Server) handleToolsCall(w http.ResponseWriter, rpcReq *JSONRPCRequest) 
 		Result:  resultBytes,
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(resp)
+	out, _ := json.Marshal(resp)
+	return out
 }
 
 // GetReceipts returns all generated attestation receipts.
