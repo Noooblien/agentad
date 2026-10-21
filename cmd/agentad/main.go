@@ -845,6 +845,10 @@ func main() {
 		}
 		return
 
+	case "bidder":
+		handleBidderCmd()
+		return
+
 	case "telemetry":
 		handleTelemetryCmd()
 		return
@@ -957,6 +961,7 @@ func printHelp() {
 	fmt.Println("  agentad <command> [arguments]")
 	fmt.Println("\nCommands:")
 	fmt.Println("  serve       Start the transparent MCP gateway & AAP HTTP protocol server")
+	fmt.Println("  bidder      Autonomous DSP bidder agent, dynamic multi-strategy valuation & shading")
 	fmt.Println("  telemetry   Prometheus metrics exporter, latency SLA percentiles & telemetry dashboard")
 	fmt.Println("  pipeline    End-to-end 12-stage AAP execution pipeline & zero-jailbreak orchestrator")
 	fmt.Println("  discovery   Supply-side manifest crawler, anti-SSRF resolver & publisher registry")
@@ -977,6 +982,8 @@ func printHelp() {
 	fmt.Println("  escrow      Manage micro-settlements, L402 payment hashes, and revenue distribution")
 	fmt.Println("  spec        Generate and inspect /.well-known/agent-ads.json specifications")
 	fmt.Println("\nExamples:")
+	fmt.Println("  agentad bidder --demo --format text")
+	fmt.Println("  agentad bidder --demo --mermaid")
 	fmt.Println("  agentad telemetry --demo --format text")
 	fmt.Println("  agentad telemetry --demo --prometheus")
 	fmt.Println("  agentad telemetry --demo --mermaid")
