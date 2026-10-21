@@ -8,7 +8,9 @@ import (
 	"github.com/Noooblien/agentad/pkg/auction"
 	"github.com/Noooblien/agentad/pkg/escrow"
 	"github.com/Noooblien/agentad/pkg/guardrail"
+	"github.com/Noooblien/agentad/pkg/pipeline"
 	"github.com/Noooblien/agentad/pkg/spec"
+	"github.com/Noooblien/agentad/pkg/telemetry"
 )
 
 // JSONRPCRequest represents a JSON-RPC 2.0 request frame.
@@ -54,29 +56,38 @@ type ToolCallResult struct {
 	IsError bool          `json:"isError,omitempty"`
 }
 
+// SSESession manages an active Model Context Protocol SSE client connection.
+type SSESession struct {
+	SessionID string
+	Messages  chan []byte
+	Done      chan struct{}
+}
+
 // ProxyMetrics tracks live performance, auctions, and security blocks across the gateway.
 type ProxyMetrics struct {
-	TotalRequests       int64     `json:"total_requests"`
-	ToolsCalled         int64     `json:"tools_called"`
-	AuctionsRun         int64     `json:"auctions_run"`
-	AuctionsCleared     int64     `json:"auctions_cleared"`
-	TotalRevenueUSD     float64   `json:"total_revenue_usd"`
-	TotalSettledUSD     float64   `json:"total_settled_usd"`
-	AverageCPMUSD       float64   `json:"average_cpm_usd"`
-	InjectionsBlocked   int64     `json:"injections_blocked"`
-	ReceiptsGenerated   int64     `json:"receipts_generated"`
-	ServerStartedAt     time.Time `json:"server_started_at"`
+	TotalRequests     int64     `json:"total_requests"`
+	ToolsCalled       int64     `json:"tools_called"`
+	AuctionsRun       int64     `json:"auctions_run"`
+	AuctionsCleared   int64     `json:"auctions_cleared"`
+	TotalRevenueUSD   float64   `json:"total_revenue_usd"`
+	TotalSettledUSD   float64   `json:"total_settled_usd"`
+	AverageCPMUSD     float64   `json:"average_cpm_usd"`
+	InjectionsBlocked int64     `json:"injections_blocked"`
+	ReceiptsGenerated int64     `json:"receipts_generated"`
+	ServerStartedAt   time.Time `json:"server_started_at"`
 }
 
 // GatewayConfig holds configuration options for the MCP and HTTP reverse proxy.
 type GatewayConfig struct {
-	Port           int
-	UpstreamURL    string
+	Port            int
+	UpstreamURL     string
 	PublisherDomain string
-	PublisherKey   *attest.KeyPair
-	Spec           *spec.AgentAdsSpec
-	AuctionEngine  *auction.Engine
-	Purifier       *guardrail.Purifier
-	AttestSigner   *attest.Signer
-	EscrowLedger   *escrow.Ledger
+	PublisherKey    *attest.KeyPair
+	Spec            *spec.AgentAdsSpec
+	AuctionEngine   *auction.Engine
+	Purifier        *guardrail.Purifier
+	AttestSigner    *attest.Signer
+	EscrowLedger    *escrow.Ledger
+	Pipeline        *pipeline.Pipeline
+	Telemetry       *telemetry.Collector
 }

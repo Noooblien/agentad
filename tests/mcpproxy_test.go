@@ -230,3 +230,79 @@ func TestMCPProxy_EscrowEndpointsAndAutoSettlement(t *testing.T) {
 		t.Errorf("Expected advertiser_id adv_pinecone, got %v", settlements[0]["advertiser_id"])
 	}
 }
+
+func TestMCPProxy_PrometheusAndTelemetryEndpoints(t *testing.T) {
+	srv := setupTestServer(t)
+
+	// 1. Query Prometheus format via query parameter
+	reqProm := httptest.NewRequest(http.MethodGet, "/metrics?format=prometheus", nil)
+	wProm := httptest.NewRecorder()
+	srv.ServeHTTP(wProm, reqProm)
+
+	if wProm.Code != http.StatusOK {
+		t.Fatalf("Expected 200 OK for /metrics?format=prometheus, got %d", wProm.Code)
+	}
+	promBody := wProm.Body.String()
+	if !strings.Contains(promBody, "aap_pipeline_requests_total") {
+		t.Fatalf("Expected aap_pipeline_requests_total in Prometheus metrics output, got: %s", promBody)
+	}
+
+	// 2. Query Prometheus format via Accept header
+	reqText := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	reqText.Header.Set("Accept", "text/plain")
+	wText := httptest.NewRecorder()
+	srv.ServeHTTP(wText, reqText)
+	if wText.Code != http.StatusOK {
+		t.Fatalf("Expected 200 OK for text/plain /metrics, got %d", wText.Code)
+	}
+
+	// 3. Query /telemetry JSON summary
+	reqTelem := httptest.NewRequest(http.MethodGet, "/telemetry", nil)
+	wTelem := httptest.NewRecorder()
+	srv.ServeHTTP(wTelem, reqTelem)
+	if wTelem.Code != http.StatusOK {
+		t.Fatalf("Expected 200 OK for /telemetry, got %d", wTelem.Code)
+	}
+
+	var summary map[string]interface{}
+	if err := json.Unmarshal(wTelem.Body.Bytes(), &summary); err != nil {
+		t.Fatalf("Failed parsing /telemetry JSON: %v", err)
+	}
+	if _, ok := summary["total_requests"]; !ok {
+		t.Fatalf("Expected total_requests in /telemetry JSON")
+	}
+}
+
+func TestMCPProxy_SSE_Transport(t *testing.T) {
+	srv := setupTestServer(t)
+
+	// Test initialize RPC dispatch
+	initReq := mcpproxy.JSONRPCRequest{
+		JSONRPC: "2.0",
+		ID:      1,
+		Method:  "initialize",
+	}
+	b, _ := json.Marshal(initReq)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/mcp", bytes.NewBuffer(b))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected 200 OK for initialize RPC, got %d", w.Code)
+	}
+
+	var rpcResp mcpproxy.JSONRPCResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &rpcResp); err != nil {
+		t.Fatalf("Failed unmarshaling initialize response: %v", err)
+	}
+
+	var initResult map[string]interface{}
+	if err := json.Unmarshal(rpcResp.Result, &initResult); err != nil {
+		t.Fatalf("Failed unmarshaling initialize result: %v", err)
+	}
+
+	if initResult["protocolVersion"] != "2024-11-05" {
+		t.Errorf("Expected protocolVersion 2024-11-05, got %v", initResult["protocolVersion"])
+	}
+}

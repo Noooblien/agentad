@@ -60,6 +60,13 @@ func (c *Collector) Registry() *Registry {
 	return c.registry
 }
 
+// AsPipelineObserver returns a pipeline.Observer closure for automated telemetry collection.
+func (c *Collector) AsPipelineObserver() pipeline.Observer {
+	return func(req *pipeline.PipelineRequest, resp *pipeline.PipelineResponse) {
+		c.RecordPipelineExecution(req, resp)
+	}
+}
+
 // RecordPipelineExecution processes a completed pipeline request and response.
 func (c *Collector) RecordPipelineExecution(req *pipeline.PipelineRequest, resp *pipeline.PipelineResponse) {
 	if resp == nil {

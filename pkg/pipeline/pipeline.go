@@ -23,10 +23,28 @@ import (
 	"github.com/Noooblien/agentad/pkg/safety"
 )
 
+// Observer is notified whenever a pipeline execution completes.
+type Observer func(req *PipelineRequest, resp *PipelineResponse)
+
 // Pipeline orchestrates the sequential 12-stage AAP execution pipeline.
 type Pipeline struct {
 	mu         sync.RWMutex
 	components PipelineComponents
+	observers  []Observer
+}
+
+// AddObserver registers an execution observer.
+func (p *Pipeline) AddObserver(obs Observer) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.observers = append(p.observers, obs)
+}
+
+// Components returns a copy of the underlying modular components.
+func (p *Pipeline) Components() PipelineComponents {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.components
 }
 
 // NewPipeline initializes a fully wired AAP execution pipeline with production defaults.
@@ -121,6 +139,17 @@ func (p *Pipeline) Execute(ctx context.Context, req PipelineRequest) *PipelineRe
 		Timestamp:      startAll.UTC(),
 		Status:         StatusCleared,
 	}
+
+	defer func() {
+		p.mu.RLock()
+		obsList := make([]Observer, len(p.observers))
+		copy(obsList, p.observers)
+		p.mu.RUnlock()
+
+		for _, obs := range obsList {
+			obs(&req, resp)
+		}
+	}()
 
 	// -------------------------------------------------------------------------
 	// Stage 1: Traffic Fraud & Bot Telemetry Scrubbing
