@@ -178,6 +178,19 @@ Endpoints exposed:
 ./bin/agentad floor --demo --format markdown
 ```
 
+### 10. Contextual Multi-Armed Bandit & Bayesian Thompson Sampling
+
+```bash
+# Run 4 production benchmark scenarios evaluating fair discovery, UCB1, and Thompson sampling:
+./bin/agentad bandit --demo
+
+# Render Mermaid decision flowchart of the Bayesian exploration and feedback loop:
+./bin/agentad bandit --demo --mermaid
+
+# Export markdown simulation and regret report:
+./bin/agentad bandit --demo --format markdown
+```
+
 ---
 
 ## Empirical Verification & Benchmark Metrics

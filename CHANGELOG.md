@@ -10,6 +10,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Contextual Multi-Armed Bandit & Bayesian Thompson Sampling Engine (`pkg/bandit`)**: High-performance exploration/exploitation engine resolving the advertiser cold-start starvation dilemma and optimizing expected revenue ($eCPM = pCTR \times pCVR \times Bid \times Relevance$) in real-time (`agentad bandit`).
+- **Thread-Safe Marsaglia-Tsang Gamma & Beta Sampler (`sampler.go`)**: High-precision pseudo-random variate generator sampling $\theta_i \sim \text{Beta}(\alpha_i, \beta_i)$ with Box-Muller standard normal variates for true Bayesian posterior updates.
+- **Multi-Algorithm Exploration Suite**: Dynamic support for Bayesian Thompson Sampling, Upper Confidence Bound 1 (UCB1: $\mu_i + c \sqrt{\frac{2 \ln N}{n_i}}$), and $\epsilon$-Greedy exploration strategies.
+- **Cold-Start Fair Discovery & Prior Seeding**: Automatic cold-start phase transition ($n < 10$ impressions) prioritizing newcomer tools over monopolistic incumbents.
+- **Time-Decayed Feedback Learning**: Closed-loop posterior parameter updates ($\alpha \leftarrow \alpha + 1$ on click, $\alpha \leftarrow \alpha + 2$ on conversion, $\beta \leftarrow \beta + 1$ on drop) with exponential time-discounting ($\lambda = 0.995$) to adapt to seasonal advertiser CTR fluctuations.
+- **CLI Subcommand & Scorecard Visualizations**: Terminal ANSI scorecards (`RenderBanditScorecard`), Mermaid decision flowcharts (`GenerateBanditMermaid`), and Markdown simulation reports (`--demo`, `--mermaid`, `--format`).
 - **Dynamic Publisher Floor Price Optimizer & Buyer Bid Shading Engine (`pkg/pricing`)**: Real-time publisher yield management calculating dynamic reserve prices based on historical inventory fill rates, category competition density, and agent reputation scores (`agentad floor`).
 - **Inventory Fill Rate Adaptation**: Closed-loop feedback mechanism dynamically stiffening reserve floors during high-demand surges and softening floors during low-fill periods to eliminate unsold inventory drops.
 - **Buyer-Side Bid Shading & Winner's Curse Protection**: Multi-algorithmic bid shading (`vickrey_emulator`, `winrate_optimizer`, `floor_aware_hybrid`) shaving bids to preserve buyer surplus while enforcing dynamic reserve safety margins.
