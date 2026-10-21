@@ -20,6 +20,7 @@ import (
 	"github.com/Noooblien/agentad/pkg/mcpproxy"
 	"github.com/Noooblien/agentad/pkg/pacing"
 	"github.com/Noooblien/agentad/pkg/pricing"
+	"github.com/Noooblien/agentad/pkg/privacy"
 	"github.com/Noooblien/agentad/pkg/spec"
 	"github.com/Noooblien/agentad/pkg/tracker"
 )
@@ -587,6 +588,76 @@ func main() {
 			return
 		}
 
+	case "privacy":
+		privCmd := flag.NewFlagSet("privacy", flag.ExitOnError)
+		demo := privCmd.Bool("demo", false, "Run comprehensive zero-PII and differential privacy demonstration")
+		query := privCmd.String("query", "", "User intent query to evaluate and sanitize")
+		epsilon := privCmd.Float64("epsilon", 1.0, "Differential privacy epsilon budget parameter (default 1.0)")
+		mermaid := privCmd.Bool("mermaid", false, "Output Mermaid flowchart markup of the privacy sanitization DAG")
+		format := privCmd.String("format", "text", "Output format: text | markdown | json")
+		strict := privCmd.Bool("strict", false, "Exit with code 1 if privacy budget is exhausted or critical PII leaked")
+		_ = privCmd.Parse(os.Args[2:])
+
+		if *demo || len(os.Args) == 2 {
+			results, err := privacy.RunDemoSuite()
+			if err != nil {
+				log.Fatalf("Privacy demo execution failed: %v", err)
+			}
+
+			switch *format {
+			case "markdown":
+				fmt.Println(privacy.GenerateMarkdownReport(results))
+			case "json":
+				bytes, _ := json.MarshalIndent(results, "", "  ")
+				fmt.Println(string(bytes))
+			default:
+				for _, r := range results {
+					fmt.Print(privacy.RenderPrivacyScorecard(r))
+					if *mermaid {
+						fmt.Println(privacy.RenderPrivacyMermaid(r))
+					}
+				}
+			}
+
+			if *strict {
+				for _, r := range results {
+					if r.BudgetExhausted || !r.Allowed {
+						os.Exit(1)
+					}
+				}
+			}
+			return
+		}
+
+		if *query == "" {
+			log.Fatal("Usage: agentad privacy -query <text> [--demo] [--epsilon 1.0] [--mermaid] [--format text|markdown|json] [-strict]")
+		}
+
+		cfg := privacy.DefaultPrivacyConfig()
+		cfg.Epsilon = *epsilon
+		engine := privacy.NewEngine(cfg)
+
+		sampleVec := []float64{0.25, 0.50, 0.15, 0.40, 0.70, 0.10, 0.35, 0.60}
+		eval := engine.EvaluateIntent("cli_session", *query, sampleVec)
+
+		switch *format {
+		case "markdown":
+			fmt.Println(privacy.GenerateMarkdownReport([]*privacy.PrivacyEvaluationResult{eval}))
+		case "json":
+			bytes, _ := json.MarshalIndent(eval, "", "  ")
+			fmt.Println(string(bytes))
+		default:
+			fmt.Print(privacy.RenderPrivacyScorecard(eval))
+			if *mermaid {
+				fmt.Println(privacy.RenderPrivacyMermaid(eval))
+			}
+		}
+
+		if *strict && (eval.BudgetExhausted || !eval.Allowed) {
+			os.Exit(1)
+		}
+		return
+
 	default:
 		printHelp()
 	}
@@ -598,6 +669,7 @@ func printHelp() {
 	fmt.Println("  agentad <command> [arguments]")
 	fmt.Println("\nCommands:")
 	fmt.Println("  serve       Start the transparent MCP gateway & AAP HTTP protocol server")
+	fmt.Println("  privacy     Zero-PII scrubbing, semantic K-anonymity & differential privacy engine")
 	fmt.Println("  bandit      Contextual Multi-Armed Bandit, Bayesian Thompson Sampling & UCB1 exploration engine")
 	fmt.Println("  floor       Dynamic publisher floor price optimizer & buyer-side bid shading engine")
 	fmt.Println("  track       Multi-touch conversion attribution & cryptographic Proof-of-Conversion (PoC)")
@@ -611,13 +683,13 @@ func printHelp() {
 	fmt.Println("  escrow      Manage micro-settlements, L402 payment hashes, and revenue distribution")
 	fmt.Println("  spec        Generate and inspect /.well-known/agent-ads.json specifications")
 	fmt.Println("\nExamples:")
+	fmt.Println("  agentad privacy --demo --format text")
+	fmt.Println("  agentad privacy --demo --mermaid")
+	fmt.Println("  agentad privacy -query \"Debug AWS AKIAIOSFODNN7EXAMPLE and call 555-123-4567\"")
 	fmt.Println("  agentad floor --demo --format text")
 	fmt.Println("  agentad floor --demo --shading=true --mermaid")
-	fmt.Println("  agentad floor --demo --format markdown")
 	fmt.Println("  agentad track --demo --format text")
-	fmt.Println("  agentad track --demo --model time_decay --mermaid")
 	fmt.Println("  agentad bench --suite all --format text")
-	fmt.Println("  agentad bench --suite injection --strict")
 	fmt.Println("  agentad serve --port 8090 --domain example.com")
 	fmt.Println("  agentad match -query 'book flight to san francisco' [-mermaid]")
 	fmt.Println("  agentad fraud --demo -strict")
